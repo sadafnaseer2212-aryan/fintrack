@@ -1,20 +1,43 @@
 {% extends "base.html" %}
-{% block title %}Register{% endblock %}
-{% block content %}
-<div class="auth-wrap">
-  <div class="text-center mb-4">
-    <div class="auth-logo"><i class="bi bi-wallet2"></i></div>
-    <h3 class="fw-bold">Create your account</h3>
-  </div>
-  <div class="card p-4">
-    <form method="post">
-      <div class="mb-3"><label class="form-label">Username</label><input name="username" class="form-control" required value="{{ request.form.username }}"></div>
-      <div class="mb-3"><label class="form-label">Email</label><input name="email" type="email" class="form-control" required value="{{ request.form.email }}"></div>
-      <div class="mb-3"><label class="form-label">Password</label><input name="password" type="password" minlength="6" class="form-control" required></div>
-      <div class="mb-3"><label class="form-label">Confirm password</label><input name="confirm" type="password" minlength="6" class="form-control" required></div>
-      <button class="btn btn-primary w-100">Register</button>
-    </form>
-    <p class="text-center mt-3 mb-0 small">Already registered? <a href="{{ url_for('login') }}">Login</a></p>
+{% import "_macros.html" as m with context %}
+{% block title %}Create account{% endblock %}
+{% block auth %}
+<div class="auth-page">
+  {% include "_auth_side.html" %}
+  <div class="auth-form">
+    <div class="panel auth-card reveal">
+      <h1 class="h3 fw-bold mb-1">Create your account</h1>
+      <p class="text-muted small mb-4">Start tracking income, expenses and budgets in minutes.</p>
+      {% with messages = get_flashed_messages(with_categories=true) %}{% for cat, msg in messages %}<div class="alert alert-{{ cat }} py-2">{{ msg }}</div>{% endfor %}{% endwith %}
+      <form method="post">
+        {{ m.csrf() }}
+        <div class="mb-3"><label class="form-label" for="u">Username</label>
+          <div class="input-group"><span class="input-group-text"><i class="bi bi-person"></i></span>
+          <input id="u" name="username" class="form-control" required minlength="3" maxlength="40" pattern="[A-Za-z0-9_]+" autocomplete="username" value="{{ request.form.username }}"></div>
+          <div class="form-text small">3–40 letters, numbers or underscores.</div></div>
+        <div class="mb-3"><label class="form-label" for="e">Email</label>
+          <div class="input-group"><span class="input-group-text"><i class="bi bi-envelope"></i></span>
+          <input id="e" name="email" type="email" class="form-control" required autocomplete="email" value="{{ request.form.email }}"></div></div>
+        <div class="row g-2 mb-1">
+          <div class="col-sm-6"><label class="form-label" for="p">Password</label><input id="p" name="password" type="password" minlength="6" class="form-control" required autocomplete="new-password"></div>
+          <div class="col-sm-6"><label class="form-label" for="c">Confirm password</label><input id="c" name="confirm" type="password" minlength="6" class="form-control" required autocomplete="new-password"></div>
+        </div>
+        <div class="d-flex align-items-center gap-2 mb-4 small text-muted"><div class="progress flex-fill" style="height:5px"><div class="progress-bar" id="pwBar" style="width:0%;animation:none"></div></div><span id="pwText" style="min-width:70px">Strength</span></div>
+        <button class="btn btn-primary w-100 py-2">Create account <i class="bi bi-arrow-right"></i></button>
+      </form>
+      <p class="text-center mt-4 mb-0 small text-muted">Already have an account? <a href="{{ url_for('login') }}" class="text-decoration-none">Sign in</a></p>
+    </div>
   </div>
 </div>
+{% endblock %}
+{% block scripts %}{% include "_auth_scripts.html" %}
+<script>
+const pw = document.getElementById('p'), bar = document.getElementById('pwBar'), txt = document.getElementById('pwText');
+pw.addEventListener('input', () => {
+  const v = pw.value; let s = 0;
+  if (v.length >= 6) s++; if (v.length >= 10) s++; if (/[A-Z]/.test(v) && /[a-z]/.test(v)) s++; if (/\d/.test(v)) s++; if (/[^A-Za-z0-9]/.test(v)) s++;
+  const lv = [['Too short', 'over', 8], ['Weak', 'over', 25], ['Fair', 'near', 50], ['Good', '', 75], ['Strong', '', 90], ['Excellent', '', 100]][v.length < 6 ? 0 : s];
+  bar.style.width = lv[2] + '%'; bar.className = 'progress-bar ' + lv[1]; txt.textContent = lv[0];
+});
+</script>
 {% endblock %}

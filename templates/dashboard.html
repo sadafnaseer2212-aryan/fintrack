@@ -1,132 +1,249 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m with context %}
 {% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+{% block page_sub %}Track, analyze and predict your finances{% endblock %}
+{% block charts_lib %}<script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+<div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mb-3">
   <div>
-    <h3 class="fw-bold mb-0">Hello, {{ current_user.username }} 👋</h3>
-    <span class="text-muted">Here is your financial overview for {{ today.strftime('%B %Y') }}</span>
+    <div class="eyebrow mb-1">{{ month|mlabel('%B %Y') }}{% if not is_current %} · <a href="{{ url_for('dashboard') }}">back to current month</a>{% endif %}</div>
+    <h2 class="h3 fw-bold mb-0">Hello, {{ current_user.username }}</h2>
   </div>
-  <div class="d-flex gap-2">
-    <a href="{{ url_for('add_transaction', type='income') }}" class="btn btn-success"><i class="bi bi-plus-circle"></i> Income</a>
-    <a href="{{ url_for('add_transaction', type='expense') }}" class="btn btn-danger"><i class="bi bi-dash-circle"></i> Expense</a>
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    {% if alerts %}
+    <button class="btn btn-light btn-sm d-flex align-items-center gap-2" data-bs-toggle="collapse" data-bs-target="#alertList" aria-expanded="false">
+      <i class="bi bi-bell{{ '-fill' if alerts|selectattr('level','equalto','danger')|list }}" style="color:{{ 'var(--danger)' if alerts|selectattr('level','equalto','danger')|list else 'var(--warn)' }}"></i>
+      {{ alerts|length }} alert{{ 's' if alerts|length != 1 }}<i class="bi bi-chevron-down small text-muted"></i></button>
+    {% endif %}
+    <form method="get"><select name="month" class="form-select form-select-sm" style="min-width:160px" onchange="this.form.submit()" aria-label="Month">
+      {% for mo in months_options %}<option value="{{ mo }}" {{ 'selected' if mo == month }}>{{ mo|mlabel('%B %Y') }}</option>{% endfor %}
+    </select></form>
   </div>
 </div>
 
-{% if not recent %}
-<div class="card p-4 mb-4 text-center">
-  <h5>No entries yet</h5>
-  <p class="text-muted mb-3">Add your first income or expense, or load 12 months of sample data to see charts and predictions instantly.</p>
-  <form method="post" action="{{ url_for('sample_data') }}"><button class="btn btn-primary"><i class="bi bi-magic"></i> Load sample data</button></form>
+{% if alerts %}
+<div class="collapse" id="alertList"><div class="panel mb-3"><div class="panel-body py-1 notice-list">
+  {% for a in alerts %}
+    <div class="notice"><span class="n-ic n-{{ a.level }}"><i class="bi {{ 'bi-exclamation-octagon' if a.level=='danger' else 'bi-exclamation-triangle' if a.level=='warning' else 'bi-info-circle' }}"></i></span>
+      <div><span class="fw-semibold" style="color:#fff">{{ a.title }}.</span> <span class="text-muted">{{ a.text }}</span></div></div>
+  {% endfor %}
+</div></div></div>
+{% endif %}
+
+{% if sample %}
+<div class="sample-banner mb-3">
+  <span><i class="bi bi-info-circle me-1"></i>This account contains <b>sample demonstration data</b> (entries marked “Sample”). Figures below are calculated from it.</span>
+  <form method="post" action="{{ url_for('remove_sample_data') }}" data-confirm="Remove all sample transactions?">{{ m.csrf() }}<button class="btn btn-sm btn-light py-0">Remove sample data</button></form>
 </div>
 {% endif %}
 
-{% for a in alerts %}
-<div class="alert alert-warning py-2"><i class="bi bi-exclamation-triangle-fill"></i> <b>Overspending:</b> {{ a }}</div>
-{% endfor %}
+{% if not has_tx %}
+<div class="panel glow-panel mb-3"><div class="empty py-5">
+  <i class="bi bi-stars"></i>
+  <h3 class="h5 mb-1">Start tracking your finances</h3>
+  <p class="small mb-3">Add your first income or expense, or load clearly-labelled sample data to explore every feature, including the 3D views and the AI forecast.</p>
+  <div class="d-flex justify-content-center gap-2 flex-wrap">
+    <a href="{{ url_for('add_transaction', type='income') }}" class="btn btn-light btn-sm"><i class="bi bi-plus"></i> Add income</a>
+    <a href="{{ url_for('add_transaction', type='expense') }}" class="btn btn-light btn-sm"><i class="bi bi-plus"></i> Add expense</a>
+    <form method="post" action="{{ url_for('sample_data') }}">{{ m.csrf() }}<button class="btn btn-primary btn-sm"><i class="bi bi-magic"></i> Load sample data</button></form>
+  </div>
+</div></div>
+{% endif %}
 
-<div class="row g-3 mb-4">
-  {% set cards = [
-    ('Total Balance', balance, 'bi-bank', 'primary'),
-    ('Total Income', income, 'bi-arrow-down-circle', 'success'),
-    ('Total Expenses', expense, 'bi-arrow-up-circle', 'danger'),
-    ('This Month Spent', m_expense, 'bi-calendar3', 'warning')] %}
-  {% for label, val, icon, color in cards %}
-  <div class="col-6 col-lg-3">
-    <div class="card stat p-3 h-100">
-      <div class="d-flex align-items-center gap-3">
-        <div class="icon bg-{{ color }}-subtle text-{{ color }}"><i class="bi {{ icon }}"></i></div>
-        <div><div class="text-muted small">{{ label }}</div><div class="value">Rs {{ '{:,.0f}'.format(val) }}</div></div>
+<!-- KPI tiles -->
+<div class="row g-3 mb-3">
+  {% set kpis = [
+    ('Total Balance', stats.balance, 'bi-wallet2', 'ic-green', chart.balance, '#34d399', m.delta(stats.balance_change, True), ''),
+    ('Total Income', stats.income, 'bi-box-arrow-in-down', 'ic-grey', chart.income, '#6ee7b7', m.delta(stats.income_change, True, 'month on month'), stats.income_month|pkr ~ ' this month'),
+    ('Total Expenses', stats.expense, 'bi-box-arrow-up', 'ic-red', chart.expense, '#a3b1ab', m.delta(stats.expense_change, False, 'month on month'), stats.expense_month|pkr ~ ' this month'),
+    ("This Month's Spending" if is_current else month|mlabel('%B') ~ ' Spending', stats.expense_month, 'bi-calendar-month', 'ic-amber', chart.expense[-6:], '#fbbf24', m.delta(stats.spend_vs_avg, False, 'vs 3-month avg'),
+      ('%.0f'|format(stats.budget_used) ~ '% of ' ~ current_user.monthly_budget|pkr ~ ' budget') if stats.budget_used is not none else '')] %}
+  {% for label, val, icon, ic, spark, color, delta, extra in kpis %}
+  <div class="col-6 col-xl-3">
+    <div class="panel kpi">
+      <div class="kpi-top"><span class="kpi-icon {{ ic }}"><i class="bi {{ icon }}"></i></span><span class="label">{{ label }}</span></div>
+      <div class="d-flex align-items-end gap-2">
+        <div class="value tnum" data-count="{{ '%.2f'|format(val) }}" data-prefix="Rs ">{{ val|pkr }}</div>
+        <svg class="spark" data-spark="{{ spark|tojson }}" data-color="{{ color }}" aria-hidden="true"></svg>
       </div>
+      <div class="meta">{{ delta }}</div>
+      <div class="meta mt-1" style="min-height:1.1em">{{ extra }}</div>
     </div>
   </div>
   {% endfor %}
 </div>
 
-<div class="row g-3 mb-4">
-  <div class="col-lg-4">
-    <div class="card predict-card p-4 h-100">
-      <div class="small text-uppercase opacity-75"><i class="bi bi-cpu"></i> AI Expense Prediction</div>
-      {% if prediction.ok %}
-        <div class="mt-2">Predicted spending for <b>{{ prediction.month }}</b></div>
-        <div class="big">Rs {{ '{:,.0f}'.format(prediction.prediction) }}</div>
-        <div class="mt-1">
-          Trend: {% if prediction.trend == 'up' %}<span class="badge bg-light text-danger"><i class="bi bi-graph-up-arrow"></i> Rising</span>
-          {% else %}<span class="badge bg-light text-success"><i class="bi bi-graph-down-arrow"></i> Falling</span>{% endif %}
+<!-- 3D overview + forecast -->
+<div class="row g-3 mb-3">
+  <div class="col-xl-8">
+    <div class="panel h-100" id="overview" data-mobile-2d>
+      <div class="panel-head flex-wrap">
+        <div><h3 class="panel-title">Financial overview</h3><div class="panel-sub">Income, expenses and net savings · last 12 months</div></div>
+        <div class="d-flex align-items-center gap-3">
+          <div class="legend-row d-none d-md-flex">
+            <span><span class="legend-dot" style="background:#34d399"></span> Income</span>
+            <span><span class="legend-dot" style="background:#64748b"></span> Expenses</span>
+            <span><span class="legend-dot" style="background:#2dd4bf"></span> Savings</span>
+          </div>
+          <div class="seg" role="group" aria-label="Chart view"><button data-set-view="3d">3D</button><button data-set-view="2d">2D</button></div>
         </div>
-        <hr class="opacity-50">
-        <div class="small">
-          {% for name, val in prediction.models.items() %}
-            <div class="d-flex justify-content-between"><span>{{ name }}</span><b>Rs {{ '{:,.0f}'.format(val) }}</b></div>
-          {% endfor %}
-          <div class="d-flex justify-content-between"><span>Monthly average</span><b>Rs {{ '{:,.0f}'.format(prediction.average) }}</b></div>
-          <div class="opacity-75 mt-2">Trained on {{ prediction.months_available }} months of your data.</div>
+      </div>
+      <div class="panel-body pt-2">
+        <div class="view-3d stage" id="overview3d" style="height:380px">
+          <div class="s-hint"><i class="bi bi-hand-index"></i> Drag to rotate · hover a bar for details · double-click to reset</div>
         </div>
-        {% if current_user.monthly_budget and prediction.prediction > current_user.monthly_budget %}
-          <div class="alert alert-light py-1 px-2 mt-3 mb-0 small text-danger"><i class="bi bi-exclamation-circle"></i> Predicted spending exceeds your budget of Rs {{ '{:,.0f}'.format(current_user.monthly_budget) }}.</div>
-        {% endif %}
-      {% else %}
-        <p class="mt-3 mb-0">{{ prediction.reason }}</p>
-      {% endif %}
+        <div class="view-2d chart chart-loading" id="overview2d" style="height:380px">Loading chart…</div>
+      </div>
     </div>
   </div>
-  <div class="col-lg-8">
-    <div class="card p-3 h-100">
-      <h6 class="fw-bold">Income vs. Expenses (last 12 months)</h6>
-      <div id="trendChart" style="height:300px"></div>
+  <div class="col-xl-4">
+    <div class="panel glow-panel forecast-card d-flex flex-column">
+      <div class="d-flex justify-content-between align-items-start">
+        <div class="eyebrow"><i class="bi bi-stars me-1"></i>AI EXPENSE PREDICTION</div>
+        {% if prediction.ok %}<span class="chip">{{ prediction.target|mlabel('%b %Y') }}</span>{% endif %}
+      </div>
+      {% if prediction.ok %}
+        {% set budget = current_user.monthly_budget %}
+        {% set peak = (prediction.history["values"] + [prediction.prediction])|max %}
+        {% set pct = (prediction.prediction / budget * 100) if budget else (prediction.prediction / peak * 100 if peak else 0) %}
+        <div class="d-flex align-items-center gap-3 mt-3">
+          <div class="min-w-0">
+            <div class="small text-muted">Predicted spending, {{ prediction.target|mlabel('%B') }}</div>
+            <div class="amount tnum my-1" data-count="{{ prediction.prediction }}" data-prefix="Rs ">{{ prediction.prediction|pkr }}</div>
+            {% if prediction.change_pct is not none %}
+            <span class="chip {{ 'bad' if prediction.change_pct >= 0 else 'good' }}"><i class="bi {{ 'bi-arrow-up-right' if prediction.change_pct >= 0 else 'bi-arrow-down-right' }}"></i>{{ '%.1f'|format(prediction.change_pct|abs) }}% vs {{ prediction.history.months[-1]|mlabel('%b') }}</span>
+            {% endif %}
+          </div>
+          <svg class="gauge ms-auto" viewBox="0 0 120 120" role="img" aria-label="{{ '%.0f'|format(pct) }}% {{ 'of budget' if budget else 'of peak month' }}">
+            <defs><linearGradient id="gaugeGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#6ee7b7"/><stop offset="1" stop-color="{{ '#f87171' if budget and pct > 100 else '#10b981' }}"/></linearGradient></defs>
+            <circle class="track" cx="60" cy="60" r="48" fill="none" stroke-width="10"/>
+            <circle class="bar" cx="60" cy="60" r="48" fill="none" stroke-width="10" transform="rotate(-90 60 60)"
+                    stroke-dasharray="301.6" stroke-dashoffset="301.6" data-offset="{{ 301.6 - 301.6 * ([pct, 100]|min) / 100 }}"/>
+            <text x="60" y="60" text-anchor="middle" font-size="22" font-weight="700">{{ '%.0f'|format(pct) }}%</text>
+            <text x="60" y="78" text-anchor="middle" font-size="9" fill="#8c9c95" style="font-family:Inter">{{ 'of budget' if budget else 'of peak month' }}</text>
+          </svg>
+        </div>
+        {% if prediction.low is not none %}<div class="kv mt-3">Expected range <b>{{ prediction.low|pkr }} – {{ prediction.high|pkr }}</b></div>{% endif %}
+        <div class="kv mt-1">Model <b>{{ prediction.model }}</b>{% if prediction.evaluated %} · MAE <b>{{ prediction.metrics[prediction.model].mae|pkr }}</b>{% endif %}</div>
+        {% if not prediction.evaluated %}<div class="kv mt-1" style="color:#fde68a">{{ prediction.note }}</div>{% endif %}
+        <div class="small text-muted mt-3">Last 8 months → forecast</div>
+        <svg class="spark position-static mt-1" style="width:100%;height:64px" data-spark="{{ (prediction.history['values'][-8:] + [prediction.prediction])|tojson }}" data-color="#6ee7b7" aria-hidden="true"></svg>
+        <a href="{{ url_for('prediction') }}" class="btn btn-primary btn-sm mt-auto w-100">Open AI prediction <i class="bi bi-arrow-right"></i></a>
+      {% else %}
+        <p class="mt-3 small text-muted">{{ prediction.reason }}</p>
+        <a href="{{ url_for('prediction') }}" class="btn btn-outline-light btn-sm">How predictions work <i class="bi bi-arrow-right"></i></a>
+      {% endif %}
     </div>
   </div>
 </div>
 
+<!-- categories, budgets, recent -->
 <div class="row g-3">
-  <div class="col-lg-5">
-    <div class="card p-3 h-100">
-      <h6 class="fw-bold">This Month by Category</h6>
-      <div id="catChart" style="height:300px"></div>
+  <div class="col-lg-6 col-xl-4">
+    <div class="panel h-100" id="categories">
+      <div class="panel-head"><div><h3 class="panel-title">Expense categories</h3><div class="panel-sub">{{ month|mlabel('%B %Y') }} · depth shows share</div></div>
+        {% if cats %}<div class="seg" role="group" aria-label="Category view"><button data-set-view="3d">3D</button><button data-set-view="2d">2D</button></div>{% endif %}</div>
+      <div class="panel-body pt-2">
+        {% if cats %}
+          {% set total = cats.values()|sum %}
+          <div class="position-relative">
+            <div class="view-3d stage" id="ring3d" style="height:200px"></div>
+            <div class="view-2d chart" id="ring2d" style="height:200px"></div>
+          </div>
+          <div class="text-center mb-2"><span class="small text-muted" id="ringLabel">Total spent</span> <b class="tnum" id="ringValue" style="color:#fff;font-family:var(--font-display)">{{ total|pkr }}</b></div>
+          {% for c, v in cats.items() %}{% if loop.index <= 5 %}
+            <div class="d-flex align-items-center gap-2 small py-1 cat-row" data-i="{{ loop.index0 }}">
+              <span class="legend-dot" style="background: {{ ['#34d399','#10b981','#2dd4bf','#6ee7b7','#059669'][loop.index0] }}"></span>
+              <span class="me-auto">{{ c }}</span><span class="text-muted tnum">{{ '%.0f'|format(v / total * 100) }}%</span>
+              <span class="fw-semibold tnum text-end" style="min-width:92px;color:#fff">{{ v|pkr }}</span></div>
+          {% endif %}{% endfor %}
+          {% if cats|length > 5 %}<div class="small text-muted pt-1">+ {{ cats|length - 5 }} more · <a href="{{ url_for('reports', mode='month', month=month) }}">full report</a></div>{% endif %}
+        {% else %}<div class="empty"><i class="bi bi-pie-chart"></i>No expenses in {{ month|mlabel }}.</div>{% endif %}
+      </div>
     </div>
   </div>
-  <div class="col-lg-7">
-    <div class="card p-3 h-100">
-      <div class="d-flex justify-content-between"><h6 class="fw-bold">Recent Transactions</h6><a href="{{ url_for('transactions') }}" class="small">View all</a></div>
-      <table class="table table-sm mb-0">
-        <tbody>
-        {% for t in recent %}
-          <tr>
-            <td class="text-muted small">{{ t.date.strftime('%d %b') }}</td>
-            <td><span class="badge text-bg-light">{{ t.category }}</span></td>
-            <td class="small">{{ t.description }}</td>
-            <td class="text-end amount-{{ t.type }}">{{ '+' if t.type=='income' else '-' }}Rs {{ '{:,.0f}'.format(t.amount) }}</td>
-          </tr>
+  <div class="col-lg-6 col-xl-4">
+    <div class="panel h-100">
+      <div class="panel-head"><div><h3 class="panel-title">Budget utilization</h3><div class="panel-sub">{{ month|mlabel('%B %Y') }}</div></div>
+        <a href="{{ url_for('budgets', month=month) }}" class="small">Manage</a></div>
+      <div class="panel-body pt-2">
+        {% for r in budgets %}
+          <div class="py-2">
+            <div class="d-flex justify-content-between small mb-1"><span class="fw-medium" style="color:#fff">{{ r.category }}</span>
+              <span class="tnum {{ 'text-danger fw-semibold' if r.over else 'text-muted' }}">{{ r.spent|pkr }} / {{ r.budget|pkr }}</span></div>
+            {{ m.budget_bar(r, loop.index0) }}
+          </div>
         {% else %}
-          <tr><td class="text-muted">No transactions yet.</td></tr>
+          <div class="empty"><i class="bi bi-wallet2"></i>No category budgets yet.<br><a href="{{ url_for('budgets') }}" class="small">Create a budget</a></div>
         {% endfor %}
-        </tbody>
-      </table>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-4">
+    <div class="panel h-100">
+      <div class="panel-head"><h3 class="panel-title">Recent transactions</h3><a href="{{ url_for('transactions') }}" class="small">View all <i class="bi bi-arrow-right"></i></a></div>
+      <div class="panel-body pt-2">
+        {% for t in recent %}
+          <a class="list-row text-decoration-none text-body" href="{{ url_for('transaction_detail', tx_id=t.id) }}">
+            {{ m.cat_icon(t) }}
+            <div class="min-w-0 me-auto"><div class="fw-semibold small text-truncate" style="color:#fff">{{ m.desc(t) }}{{ m.sample_badge(t) }}</div>
+              <div class="text-muted" style="font-size:.72rem">{{ t.category }} · {{ t.date|fdate }}</div></div>
+            <div class="small tnum text-nowrap {{ 'amt-income' if t.type=='income' else 'amt-expense' }}">{{ '+' if t.type=='income' else '−' }}{{ t.amount|pkr }}</div>
+          </a>
+        {% else %}
+          <div class="empty"><i class="bi bi-receipt"></i>No transactions yet.</div>
+        {% endfor %}
+      </div>
     </div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
-<script>
-const d = {{ chart | tojson }};
-const cfg = {responsive: true, displayModeBar: false};
-const layout = {margin: {t: 10, r: 10, b: 40, l: 60}, legend: {orientation: 'h', y: -0.2},
-                paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'};
-const traces = [
-  {x: d.months, y: d.income, name: 'Income', type: 'bar', marker: {color: '#22c55e'}},
-  {x: d.months, y: d.expense, name: 'Expenses', type: 'bar', marker: {color: '#ef4444'}},
-];
-if (d.prediction.ok && d.months.length) {
-  const last = d.months[d.months.length - 1];
-  const lastVal = d.expense[d.expense.length - 1];
-  traces.push({x: [last, d.prediction.month], y: [lastVal, d.prediction.prediction], name: 'Predicted',
-               type: 'scatter', mode: 'lines+markers', line: {dash: 'dot', color: '#7c3aed', width: 3}});
-}
-Plotly.newPlot('trendChart', traces, {...layout, barmode: 'group'}, cfg);
-if (d.cat_values.length) {
-  Plotly.newPlot('catChart', [{labels: d.cat_labels, values: d.cat_values, type: 'pie', hole: 0.5}],
-                 {...layout, margin: {t: 10, b: 10, l: 10, r: 10}}, cfg);
-} else {
-  document.getElementById('catChart').innerHTML = '<p class="text-muted mt-5 text-center">No expenses this month.</p>';
+<script>window.DASH = {{ {'chart': chart, 'cats': cats} | tojson }};</script>
+<script type="module">
+import {bars3d, ring3d} from "{{ url_for('static', filename='js/fin3d.js') }}";
+const d = window.DASH.chart;
+const hasData = d.income.some(v => v) || d.expense.some(v => v);
+
+// gauge animation
+requestAnimationFrame(() => document.querySelectorAll('.gauge .bar').forEach(b => b.style.strokeDashoffset = b.dataset.offset));
+
+// ---- overview: 3D bars or 2D Plotly
+let o3 = null, o2 = false;
+const ov = document.getElementById('overview');
+if (!hasData) { FT.empty('overview2d', 'No income or expenses recorded in the last 12 months.'); ov.classList.add('show-2d'); ov.querySelector('.seg').style.display = 'none'; }
+else FT.viewSwitch(ov,
+  () => { if (!o3) o3 = bars3d(document.getElementById('overview3d'), {labels: d.months, series: [
+      {name: 'Income', color: '#34d399', values: d.income}, {name: 'Expenses', color: '#64748b', values: d.expense}, {name: 'Savings', color: '#2dd4bf', values: d.savings}]}); },
+  () => { if (o2) return; o2 = true;
+    const traces = [
+      {x: d.months, y: d.income, name: 'Income', type: 'bar', offsetgroup: '1', marker: {color: FT.em}, hovertemplate: '%{x}<br>Income: Rs %{y:,.0f}<extra></extra>'},
+      {x: d.months, y: d.expense, name: 'Expenses', type: 'bar', offsetgroup: '2', marker: {color: '#64748b'}, hovertemplate: '%{x}<br>Expenses: Rs %{y:,.0f}<extra></extra>'},
+      {x: d.months, y: d.savings, name: 'Savings', type: 'scatter', mode: 'lines+markers', line: {color: FT.teal, width: 2.5, shape: 'spline'}, marker: {size: 6}, hovertemplate: '%{x}<br>Savings: Rs %{y:,.0f}<extra></extra>'}];
+    if (d.forecast) traces.push({x: [d.forecast.label], y: [d.forecast.value], name: 'Forecast', type: 'bar', offsetgroup: '2',
+      marker: {color: 'rgba(110,231,183,.15)', line: {color: FT.em3, width: 1.5}}, hovertemplate: '%{x}<br>Forecast: Rs %{y:,.0f}<extra></extra>'});
+    FT.plot('overview2d', traces, {barmode: 'group', margin: {t: 34, r: 10, b: 30, l: 58},
+      xaxis: {tickangle: 0, nticks: document.getElementById('overview2d').offsetWidth < 600 ? 5 : 13}});
+  });
+
+// ---- categories: 3D ring or 2D donut
+const cats = window.DASH.cats, labels = Object.keys(cats), values = Object.values(cats);
+const cbox = document.getElementById('categories');
+if (labels.length) {
+  const total = values.reduce((a, b) => a + b, 0);
+  const lab = document.getElementById('ringLabel'), val = document.getElementById('ringValue');
+  const focus = (i) => {
+    if (i === null) { lab.textContent = 'Total spent'; val.textContent = FT.pkr(total); }
+    else { lab.textContent = labels[i] + ' · ' + (values[i] / total * 100).toFixed(0) + '%'; val.textContent = FT.pkr(values[i]); }
+    document.querySelectorAll('.cat-row').forEach(r => r.style.opacity = (i === null || +r.dataset.i === i) ? 1 : .45);
+  };
+  let r3 = null, r2 = false;
+  FT.viewSwitch(cbox,
+    () => { if (!r3) r3 = ring3d(document.getElementById('ring3d'), {labels, values, colors: FT.cats, onFocus: focus}); },
+    () => { if (r2) return; r2 = true;
+      FT.plot('ring2d', [{labels, values, type: 'pie', hole: .66, sort: false, marker: {colors: FT.cats, line: {color: '#0b1210', width: 2}}, textinfo: 'none',
+        hovertemplate: '%{label}<br>Rs %{value:,.0f} (%{percent})<extra></extra>'}], {margin: {t: 0, b: 0, l: 0, r: 0}, showlegend: false}, {animate: false}); });
 }
 </script>
 {% endblock %}

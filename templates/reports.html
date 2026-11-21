@@ -1,90 +1,141 @@
 {% extends "base.html" %}
-{% block title %}Reports{% endblock %}
+{% import "_macros.html" as m with context %}
+{% block title %}Reports & Analytics{% endblock %}
+{% block page_title %}Reports & Analytics{% endblock %}
+{% block page_sub %}Monthly, yearly and custom-period financial analysis{% endblock %}
+{% block charts_lib %}<script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-  <h3 class="fw-bold mb-0">Reports</h3>
-  <form class="d-flex gap-2" method="get">
-    <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
-      {% for y in years %}<option value="{{ y }}" {{ 'selected' if y==year }}>{{ y }}</option>{% endfor %}
-    </select>
-    <select name="month" class="form-select form-select-sm" onchange="this.form.submit()">
-      <option value="0">Yearly report</option>
-      {% for m in range(1, 13) %}<option value="{{ m }}" {{ 'selected' if m==month }}>{{ ['January','February','March','April','May','June','July','August','September','October','November','December'][m-1] }}</option>{% endfor %}
-    </select>
-  </form>
-</div>
-
-{% for a in alerts %}
-<div class="alert alert-warning py-2"><i class="bi bi-exclamation-triangle-fill"></i> {{ a }}</div>
-{% endfor %}
+<div class="panel mb-3"><div class="panel-body py-2">
+  <div class="d-flex flex-wrap align-items-center gap-2">
+    <div class="seg me-2">
+      <a href="{{ url_for('reports', mode='month') }}" class="{{ 'active' if mode=='month' }}">Monthly</a>
+      <a href="{{ url_for('reports', mode='year') }}" class="{{ 'active' if mode=='year' }}">Yearly</a>
+      <a href="{{ url_for('reports', mode='range') }}" class="{{ 'active' if mode=='range' }}">Date range</a>
+    </div>
+    <form method="get" class="d-flex flex-wrap align-items-center gap-2">
+      <input type="hidden" name="mode" value="{{ mode }}">
+      {% if mode == 'month' %}
+        <input type="month" name="month" value="{{ sel_month }}" class="form-control form-control-sm" onchange="this.form.submit()" aria-label="Month">
+      {% elif mode == 'year' %}
+        <select name="year" class="form-select form-select-sm" onchange="this.form.submit()" aria-label="Year">
+          {% for y in years %}<option {{ 'selected' if y==sel_year }}>{{ y }}</option>{% endfor %}</select>
+      {% else %}
+        <input type="date" name="start" value="{{ start.isoformat() }}" class="form-control form-control-sm" aria-label="Start date">
+        <span class="text-muted small">to</span>
+        <input type="date" name="end" value="{{ end.isoformat() }}" class="form-control form-control-sm" aria-label="End date">
+        <button class="btn btn-primary btn-sm">Apply</button>
+      {% endif %}
+    </form>
+    <span class="ms-auto small text-muted">{{ title }} · {{ count }} transactions</span>
+  </div>
+</div></div>
 
 <div class="row g-3 mb-3">
-  <div class="col-md-4"><div class="card p-3"><small class="text-muted">Income ({{ 'month' if month else 'year' }})</small><div class="fs-4 amount-income">Rs {{ '{:,.0f}'.format(income) }}</div></div></div>
-  <div class="col-md-4"><div class="card p-3"><small class="text-muted">Expenses ({{ 'month' if month else 'year' }})</small><div class="fs-4 amount-expense">Rs {{ '{:,.0f}'.format(expense) }}</div></div></div>
-  <div class="col-md-4"><div class="card p-3"><small class="text-muted">Savings</small><div class="fs-4 fw-bold">Rs {{ '{:,.0f}'.format(income - expense) }}
-    {% if income %}<small class="text-muted fs-6">({{ '%.0f' % ((income - expense) / income * 100) }}%)</small>{% endif %}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="panel stat"><div class="label">Income</div><div class="value tnum amt-income">{{ income|pkr }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="panel stat"><div class="label">Expenses</div><div class="value tnum">{{ expense|pkr }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="panel stat"><div class="label">Net savings</div><div class="value tnum {{ 'text-danger' if income - expense < 0 }}">{{ (income - expense)|pkr }}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="panel stat"><div class="label">Savings rate</div>
+    <div class="value tnum">{% if income %}{{ '%.1f'|format((income - expense) / income * 100) }}%{% else %}—{% endif %}</div>
+    <div class="meta">Share of income saved</div></div></div>
 </div>
 
 <div class="row g-3 mb-3">
-  <div class="col-lg-7"><div class="card p-3"><h6 class="fw-bold">Monthly trend {{ year }}</h6><div id="monthChart" style="height:320px"></div></div></div>
-  <div class="col-lg-5"><div class="card p-3"><h6 class="fw-bold">Spending by category</h6><div id="catChart" style="height:320px"></div></div></div>
+  <div class="col-lg-8"><div class="panel h-100">
+    <div class="panel-head"><div><h3 class="panel-title">{{ 'Daily' if mode=='month' else 'Monthly' }} income, expenses & savings</h3>
+      <div class="panel-sub">{% if mode != 'month' %}Darker red bars: spending more than 20% above the period average{% else %}{{ title }}{% endif %}</div></div></div>
+    <div id="trendChart" class="chart chart-loading" style="height:300px">Loading chart…</div>
+  </div></div>
+  <div class="col-lg-4"><div class="panel h-100">
+    <div class="panel-head"><h3 class="panel-title">Spending by category</h3></div>
+    <div id="catChart" class="chart chart-loading" style="height:300px">Loading chart…</div>
+  </div></div>
 </div>
 
 <div class="row g-3">
-  <div class="col-lg-7">
-    <div class="card p-0">
-      <div class="p-3 pb-0"><h6 class="fw-bold">Month-by-month summary</h6>
-        <p class="small text-muted mb-2">Months highlighted in red spent more than 20% above the average (Rs {{ '{:,.0f}'.format(avg_exp) }}).</p></div>
-      <table class="table table-sm mb-0">
-        <thead class="table-light"><tr><th>Month</th><th class="text-end">Income</th><th class="text-end">Expenses</th><th class="text-end">Net</th></tr></thead>
+  <div class="col-lg-8">
+    {% if rows %}
+    <div class="panel mb-3">
+      <div class="panel-head"><h3 class="panel-title">Month-by-month summary</h3></div>
+      <div class="table-responsive mt-2"><table class="table">
+        <thead><tr><th>Month</th><th class="text-end">Income</th><th class="text-end">Expenses</th><th class="text-end">Net</th><th class="text-end">Savings rate</th></tr></thead>
         <tbody>
-        {% for r in monthly %}
-          <tr class="{{ 'over' if r.over }}"><td>{{ r.month }} {% if r.over %}<i class="bi bi-exclamation-circle text-danger" title="Overspending"></i>{% endif %}</td>
-            <td class="text-end">{{ '{:,.0f}'.format(r.income) }}</td>
-            <td class="text-end">{{ '{:,.0f}'.format(r.expense) }}</td>
-            <td class="text-end fw-semibold {{ 'text-danger' if r.net < 0 else 'text-success' }}">{{ '{:,.0f}'.format(r.net) }}</td></tr>
+        {% for r in rows %}
+          <tr {% if r.over %}style="--bs-table-bg: var(--danger-bg)"{% endif %}>
+            <td><a href="{{ url_for('reports', mode='month', month=r.key) }}" class="text-body">{{ r.label }}</a>
+              {% if r.over %}<span class="badge-soft ms-1" style="background:var(--danger-bg);color:var(--danger)">High spending</span>{% endif %}</td>
+            <td class="text-end tnum">{{ r.income|pkr }}</td><td class="text-end tnum">{{ r.expense|pkr }}</td>
+            <td class="text-end tnum fw-semibold {{ 'text-danger' if r.net < 0 else 'amt-income' }}">{{ r.net|pkr }}</td>
+            <td class="text-end tnum text-muted">{{ '%.0f%%'|format(r.rate) if r.rate is not none else '—' }}</td></tr>
         {% endfor %}
         </tbody>
-      </table>
+        <tfoot><tr class="fw-semibold"><td>Total</td><td class="text-end tnum">{{ income|pkr }}</td><td class="text-end tnum">{{ expense|pkr }}</td>
+          <td class="text-end tnum">{{ (income - expense)|pkr }}</td><td></td></tr></tfoot>
+      </table></div>
     </div>
-  </div>
-  <div class="col-lg-5">
-    <div class="card p-0">
-      <div class="p-3 pb-0"><h6 class="fw-bold">Top spending categories</h6></div>
-      <table class="table table-sm mb-0">
+    {% endif %}
+    <div class="panel">
+      <div class="panel-head"><h3 class="panel-title">Category breakdown</h3></div>
+      <div class="table-responsive mt-2"><table class="table">
+        <thead><tr><th>Expense category</th><th style="width:40%">Share</th><th class="text-end">Amount</th></tr></thead>
         <tbody>
         {% for c, v in by_cat.items() %}
-          <tr><td>{{ c }}</td><td class="w-50"><div class="progress" style="height:8px"><div class="progress-bar bg-danger" style="width: {{ (v / expense * 100) if expense else 0 }}%"></div></div></td>
-            <td class="text-end">Rs {{ '{:,.0f}'.format(v) }}</td></tr>
-        {% else %}
-          <tr><td class="text-muted">No expenses in this period.</td></tr>
-        {% endfor %}
+          <tr><td>{{ c }}</td><td><div class="d-flex align-items-center gap-2"><div class="progress flex-fill"><div class="progress-bar" style="width: {{ v / expense * 100 }}%"></div></div>
+            <span class="small text-muted tnum" style="width:38px">{{ '%.0f'|format(v / expense * 100) }}%</span></div></td>
+            <td class="text-end tnum">{{ v|pkr }}</td></tr>
+        {% else %}<tr><td colspan="3" class="text-center text-muted py-4">No expenses in this period.</td></tr>{% endfor %}
         </tbody>
-      </table>
+      </table></div>
     </div>
+  </div>
+  <div class="col-lg-4">
+    <div class="panel mb-3"><div class="panel-head"><h3 class="panel-title">Overspending highlights</h3></div>
+      <div class="panel-body pt-2 notice-list">
+        {% set high = rows|selectattr('over')|list %}
+        {% for r in high %}
+          <div class="notice"><span class="n-ic n-warning"><i class="bi bi-graph-up-arrow"></i></span><div><b>{{ r.label }}</b><div class="text-muted">Spent {{ r.expense|pkr }}, above the period average.</div></div></div>
+        {% endfor %}
+        {% for o in overruns[:8] %}
+          <div class="notice"><span class="n-ic n-danger"><i class="bi bi-exclamation-octagon"></i></span><div><b>{{ o.category }} · {{ o.month|mlabel }}</b><div class="text-muted">{{ o.spent|pkr }} of {{ o.budget|pkr }} budget ({{ '%.0f'|format(o.pct) }}%)</div></div></div>
+        {% endfor %}
+        {% if overruns|length > 8 %}<div class="small text-muted pt-1">+ {{ overruns|length - 8 }} more budget overruns</div>{% endif %}
+        {% if not high and not overruns %}<div class="empty py-3"><i class="bi bi-check2-circle"></i>No overspending in this period.</div>{% endif %}
+      </div></div>
+    <div class="panel mb-3"><div class="panel-head"><h3 class="panel-title">Largest expenses</h3></div>
+      <div class="panel-body pt-1">
+        {% for t in top %}
+          <a class="list-row text-body text-decoration-none" href="{{ url_for('transaction_detail', tx_id=t.id) }}">{{ m.cat_icon(t) }}
+            <div class="me-auto min-w-0"><div class="small fw-semibold text-truncate">{{ m.desc(t) }}</div><div class="text-muted" style="font-size:.75rem">{{ t.category }} · {{ t.date|fdate }}</div></div>
+            <span class="small tnum fw-semibold">{{ t.amount|pkr }}</span></a>
+        {% else %}<div class="empty py-3">No expenses.</div>{% endfor %}
+      </div></div>
+    <div class="panel"><div class="panel-head"><h3 class="panel-title">Income sources</h3></div>
+      <div class="panel-body pt-2">
+        {% for c, v in inc_cat.items() %}<div class="d-flex justify-content-between small py-1"><span>{{ c }}</span><span class="tnum fw-semibold">{{ v|pkr }}</span></div>
+        {% else %}<div class="text-muted small">No income in this period.</div>{% endfor %}
+      </div></div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
-const monthly = {{ monthly | tojson }};
-const byCat = {{ by_cat | tojson }};
-const cfg = {responsive: true, displayModeBar: false};
-const base = {margin: {t: 10, r: 10, b: 40, l: 60}, legend: {orientation: 'h', y: -0.2},
-              paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'};
-const m = monthly.map(r => r.month);
-Plotly.newPlot('monthChart', [
-  {x: m, y: monthly.map(r => r.income), name: 'Income', type: 'bar', marker: {color: '#22c55e'}},
-  {x: m, y: monthly.map(r => r.expense), name: 'Expenses', type: 'bar',
-   marker: {color: monthly.map(r => r.over ? '#b91c1c' : '#f87171')}},
-  {x: m, y: monthly.map(r => r.net), name: 'Net savings', type: 'scatter', mode: 'lines+markers', line: {color: '#2563eb'}},
-], {...base, barmode: 'group'}, cfg);
-const labels = Object.keys(byCat);
-if (labels.length) {
-  Plotly.newPlot('catChart', [{type: 'bar', orientation: 'h', y: labels.reverse(), x: labels.map(l => byCat[l]),
-                               marker: {color: '#ef4444'}}], {...base, margin: {t: 10, r: 10, b: 30, l: 100}}, cfg);
-} else {
-  document.getElementById('catChart').innerHTML = '<p class="text-muted mt-5 text-center">No data.</p>';
-}
+const c = {{ chart | tojson }};
+if (c.income.some(v => v) || c.expense.some(v => v)) {
+  const expColors = c.over.length ? c.over.map(o => o ? FT.red : FT.grey) : FT.grey;
+  FT.plot('trendChart', [
+    {x: c.labels, y: c.income, name: 'Income', type: 'bar', marker: {color: FT.green}, hovertemplate: '%{x}<br>Income: Rs %{y:,.0f}<extra></extra>'},
+    {x: c.labels, y: c.expense, name: 'Expenses', type: 'bar', marker: {color: expColors}, hovertemplate: '%{x}<br>Expenses: Rs %{y:,.0f}<extra></extra>'},
+    {x: c.labels, y: c.net, name: 'Net savings', type: 'scatter', mode: 'lines+markers', line: {color: FT.greenMid, width: 2},
+     marker: {size: 5}, hovertemplate: '%{x}<br>Net: Rs %{y:,.0f}<extra></extra>'},
+  ], {barmode: 'group', margin: {t: 30, r: 10, b: 40, l: 60},
+      xaxis: {tickangle: 0, nticks: c.labels.length > 13 ? 8 : 13}});
+} else { FT.empty('trendChart', 'No transactions in this period.'); }
+if (c.cat_values.length) {
+  const labels = c.cat_labels.slice().reverse(), vals = c.cat_values.slice().reverse();
+  FT.plot('catChart', [{type: 'bar', orientation: 'h', y: labels, x: vals, marker: {color: FT.green},
+    hovertemplate: '%{y}: Rs %{x:,.0f}<extra></extra>'}],
+    {margin: {t: 10, r: 16, b: 30, l: 92}, xaxis: {tickprefix: 'Rs ', tickformat: '~s', gridcolor: FT.grid, fixedrange: true},
+     yaxis: {tickfont: {size: 11, color: FT.ink}, fixedrange: true, tickprefix: '', tickformat: '', gridcolor: 'rgba(0,0,0,0)'}, showlegend: false},
+    {animate: false});
+} else { FT.empty('catChart', 'No expenses in this period.'); }
 </script>
 {% endblock %}

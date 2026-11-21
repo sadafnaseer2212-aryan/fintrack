@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}AI Expense Prediction{% endblock %}
+{% block page_title %}AI Expense Prediction{% endblock %}
+{% block page_sub %}scikit-learn forecast of next month's spending, evaluated on your own history{% endblock %}
+{% block charts_lib %}<script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>{% endblock %}
+{% block content %}
+{% if sample %}<div class="sample-banner mb-3"><span><i class="bi bi-info-circle me-1"></i>The forecast below is trained on <b>sample demonstration data</b>. Add your own records for a personal forecast.</span></div>{% endif %}
+
+{% if not pred.ok %}
+<div class="panel glow-panel mb-3"><div class="empty py-5">
+  <i class="bi bi-stars"></i><h3 class="h5 mb-1">Not enough data for a forecast yet</h3>
+  <p class="small mb-1">{{ pred.reason }}</p>
+  <p class="small mb-0">Keep recording expenses. The models are trained automatically from your history.</p>
+</div></div>
+{% else %}
+<!-- hero -->
+<div class="row g-3 mb-3">
+  <div class="col-xl-4">
+    <div class="panel glow-panel forecast-card">
+      <div class="d-flex justify-content-between align-items-start">
+        <div class="eyebrow"><i class="bi bi-stars me-1"></i>Forecast · {{ pred.target|mlabel('%B %Y') }}</div>
+        <span class="chip {{ 'good' if pred.evaluated else 'bad' }}">{{ 'Evaluated' if pred.evaluated else 'Low confidence' }}</span>
+      </div>
+      <div class="amount tnum mt-3" data-count="{{ pred.prediction }}" data-prefix="Rs ">{{ pred.prediction|pkr }}</div>
+      {% if pred.low is not none %}<div class="kv mt-2">Expected range <b>{{ pred.low|pkr }} – {{ pred.high|pkr }}</b> <span class="text-muted">(± RMSE)</span></div>{% endif %}
+      <div class="d-flex flex-wrap gap-2 mt-3">
+        {% if pred.change_pct is not none %}<span class="chip {{ 'bad' if pred.change_pct >= 0 else 'good' }}"><i class="bi {{ 'bi-arrow-up-right' if pred.change_pct >= 0 else 'bi-arrow-down-right' }}"></i>{{ '+' if pred.change_pct >= 0 }}{{ '%.1f'|format(pred.change_pct) }}% vs {{ pred.history.months[-1]|mlabel('%b') }}</span>{% endif %}
+        <span class="chip"><i class="bi bi-cpu"></i>{{ pred.model }}</span>
+      </div>
+      <hr class="my-3">
+      <div class="row g-2 small">
+        <div class="col-6"><div class="kv">Last completed month</div><b style="color:#fff">{{ pred.last_month|pkr }}</b> <span class="text-muted">{{ pred.history.months[-1]|mlabel('%b') }}</span></div>
+        <div class="col-6"><div class="kv">3-month average</div><b style="color:#fff">{{ pred.avg3|pkr }}</b></div>
+        <div class="col-6"><div class="kv">Training months</div><b style="color:#fff">{{ pred.months_available }}</b></div>
+        <div class="col-6"><div class="kv">Error (MAE)</div><b style="color:#fff">{% if pred.evaluated %}{{ pred.metrics[pred.model].mae|pkr }}{% else %}not measured{% endif %}</b></div>
+      </div>
+    </div>
+  </div>
+  <div class="col-xl-8">
+    <div class="panel h-100">
+      <div class="panel-head"><div><h3 class="panel-title">How this forecast was produced</h3><div class="panel-sub">Every number below comes from your records</div></div></div>
+      <div class="panel-body pt-4">
+        <div class="pipeline mb-3">
+          <div class="pipe-step"><div class="p-ic"><i class="bi bi-database"></i></div><b>{{ pred.months_available }} months</b>monthly totals aggregated</div>
+          <div class="pipe-step"><div class="p-ic"><i class="bi bi-scissors"></i></div><b>Current month</b>excluded (incomplete)</div>
+          <div class="pipe-step"><div class="p-ic"><i class="bi bi-diagram-3"></i></div><b>{{ (pred.metrics|length) if pred.evaluated else 1 }} model{{ 's' if pred.evaluated }}</b>{{ 'tested on ' ~ pred.backtest.months|length ~ ' months' if pred.evaluated else 'baseline only' }}</div>
+          <div class="pipe-step"><div class="p-ic"><i class="bi bi-trophy"></i></div><b>{{ pred.model.split(' (')[0] }}</b>{{ 'lowest MAE' if pred.evaluated else 'not enough data to compare' }}</div>
+          <div class="pipe-step"><div class="p-ic"><i class="bi bi-graph-up-arrow"></i></div><b>{{ pred.prediction|pkr }}</b>{{ pred.target|mlabel('%b %Y') }}</div>
+        </div>
+        {% if not pred.evaluated %}<div class="alert alert-warning py-2 mb-0"><i class="bi bi-exclamation-triangle me-1"></i>{{ pred.note }}</div>
+        {% else %}<p class="small text-muted mb-0">{{ pred.note }} The shaded band on the timeline is the expected error range (± RMSE). Drag the slider under the chart to explore the history.</p>{% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- interactive timeline -->
+<div class="panel mb-3">
+  <div class="panel-head flex-wrap">
+    <div><h3 class="panel-title">Spending timeline: actual vs forecast</h3><div class="panel-sub">Solid line: actual monthly spending · dotted line: forecast · band: uncertainty{% if pred.evaluated %} · thin lines: past out-of-sample predictions (click the legend to toggle){% endif %}</div></div>
+    <div class="seg" role="group" aria-label="Timeline range"><button data-range="6">6M</button><button data-range="12">1Y</button><button data-range="0" class="active">All</button></div>
+  </div>
+  <div class="panel-body pt-1"><div id="timeline" class="chart chart-loading" style="height:400px">Loading chart…</div></div>
+</div>
+
+{% if pred.evaluated %}
+<!-- model comparison -->
+{% set mx_mae = pred.metrics.values()|map(attribute='mae')|max %}
+{% set mx_rmse = pred.metrics.values()|map(attribute='rmse')|max %}
+{% set mapes = pred.metrics.values()|map(attribute='mape')|reject('none')|list %}
+{% set mx_mape = mapes|max if mapes else 1 %}
+<div class="row g-3 mb-3">
+  {% for name, mt in pred.metrics.items() %}
+  <div class="col-md-4">
+    <div class="panel model-card {{ 'best' if name == pred.model }}">
+      <div class="d-flex justify-content-between align-items-start mb-2">
+        <div><div class="fw-semibold" style="color:#fff">{{ name }}</div>
+          <div class="small text-muted">{{ {'Linear Regression': 'Long-term trend', 'Random Forest': 'Patterns in last 3 months'}.get(name, 'Naive benchmark') }}</div></div>
+        {% if name == pred.model %}<span class="chip good"><i class="bi bi-trophy"></i>Selected</span>{% endif %}
+      </div>
+      <div class="display tnum mb-2" style="font-size:1.35rem;font-weight:650">{{ pred.all_predictions[name]|pkr }} <span class="small text-muted" style="font-family:Inter;font-size:.72rem;font-weight:400">forecast</span></div>
+      {% for key, label, mxv, fmt in [('mae','MAE',mx_mae,'rs'),('rmse','RMSE',mx_rmse,'rs'),('mape','MAPE',mx_mape,'pct')] %}
+        {% set v = mt[key] %}
+        <div class="d-flex justify-content-between small mt-2"><span class="text-muted">{{ label }}</span><b class="tnum" style="color:#fff">{% if v is none %}—{% elif fmt == 'rs' %}{{ v|pkr }}{% else %}{{ '%.1f'|format(v) }}%{% endif %}</b></div>
+        <div class="mbar mt-1"><span style="width: {{ (v / mxv * 100) if v is not none and mxv else 0 }}%; animation-delay: {{ 300 + loop.index0 * 120 }}ms"></span></div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-7"><div class="panel h-100">
+    <div class="panel-head"><div><h3 class="panel-title">Model comparison (out-of-sample test)</h3><div class="panel-sub">What each model would have predicted for the last {{ pred.backtest.months|length }} months, using only data available beforehand</div></div></div>
+    <div class="panel-body pt-1"><div id="btChart" class="chart chart-loading" style="height:300px">Loading chart…</div></div>
+  </div></div>
+  <div class="col-lg-5"><div class="panel h-100">
+    <div class="panel-head"><h3 class="panel-title">Evaluation metrics</h3></div>
+    <div class="table-responsive mt-2"><table class="table">
+      <thead><tr><th>Model</th><th class="text-end">MAE</th><th class="text-end">RMSE</th><th class="text-end">MAPE</th></tr></thead>
+      <tbody>
+      {% for name, mt in pred.metrics.items() %}
+        <tr class="{{ 'metric-best' if name == pred.model }}">
+          <td class="fw-medium">{{ name }}{% if name == pred.model %} <span class="badge-soft badge-income">Selected</span>{% endif %}</td>
+          <td class="text-end tnum">{{ mt.mae|pkr }}</td><td class="text-end tnum">{{ mt.rmse|pkr }}</td>
+          <td class="text-end tnum">{{ '%.1f%%'|format(mt.mape) if mt.mape is not none else '—' }}</td></tr>
+      {% endfor %}
+      </tbody></table></div>
+    <div class="panel-body pt-2 small text-muted">
+      <b style="color:#fff">MAE</b>: average miss in rupees. <b style="color:#fff">RMSE</b>: like MAE, but punishes big misses more. <b style="color:#fff">MAPE</b>: average miss as a % of actual spending. Lower is better, and the lowest MAE wins.
+    </div>
+  </div></div>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-lg-6"><div class="panel">
+    <div class="panel-head"><div><h3 class="panel-title">Prediction history</h3><div class="panel-sub">Each forecast is saved and compared with actual spending once that month ends</div></div></div>
+    <div class="table-responsive mt-2"><table class="table">
+      <thead><tr><th>Month</th><th>Model</th><th class="text-end">Predicted</th><th class="text-end">Actual</th><th class="text-end">Error</th></tr></thead>
+      <tbody>
+      {% for r in logs %}
+        <tr><td>{{ r.log.target_month|mlabel }}</td><td class="small text-muted">{{ r.log.model_name }}</td>
+          <td class="text-end tnum">{{ r.log.predicted|pkr }}</td>
+          <td class="text-end tnum">{{ r.actual|pkr if r.actual is not none else '—' }}</td>
+          <td class="text-end tnum small">{% if r.error_pct is not none %}{{ '%.1f%%'|format(r.error_pct) }}{% else %}<span class="chip">Pending</span>{% endif %}</td></tr>
+      {% else %}<tr><td colspan="5" class="text-center text-muted py-4">No forecasts saved yet.</td></tr>{% endfor %}
+      </tbody></table></div>
+  </div></div>
+  <div class="col-lg-6"><div class="panel h-100"><div class="panel-body">
+    <h3 class="panel-title mb-3">How the forecast works</h3>
+    <ol class="steps">
+      <li>Your expenses are grouped into <b>monthly totals</b>. The current month is left out because it isn't finished.</li>
+      <li>Three <b>scikit-learn</b> models are trained: a <b>Baseline</b> (average of the last 3 months), <b>Linear Regression</b> (long-term trend) and a <b>Random Forest Regressor</b> (patterns in the previous 3 months' totals).</li>
+      <li>Each model is tested <b>chronologically</b>: for each recent month it only sees data that existed two months earlier, just like forecasting next month today. No future data is used, so there is no data leakage.</li>
+      <li>Errors are measured with <b>MAE, RMSE and MAPE</b>, and the lowest MAE wins. If the simple baseline wins, it is used, because a complex model isn't automatically better.</li>
+      <li>The winning model is retrained on all completed months to forecast next month. The <b>RMSE</b> gives the uncertainty band.</li>
+      <li>With fewer than 9 completed months there isn't enough data to test models, so a clearly-labelled low-confidence baseline is shown instead. Below 3 months, no forecast is made.</li>
+    </ol>
+  </div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const p = {{ pred | tojson }};
+if (p.ok) {
+  const label = k => new Date(k + '-01T00:00:00').toLocaleString('en-US', {month: 'short', year: 'numeric'});
+  const hm = p.history.months.map(label), hv = p.history.values;
+  const lastX = hm[hm.length - 1], lastY = hv[hv.length - 1], tx = label(p.target);
+  const traces = [];
+  const hasBand = p.low !== null && p.low !== undefined;
+  if (hasBand) {  // uncertainty band: widens from the last actual point to the forecast month
+    traces.push({x: [lastX, tx, tx, lastX], y: [lastY, p.high, p.low, lastY], fill: 'toself', fillcolor: 'rgba(52,211,153,.14)',
+      line: {color: 'rgba(52,211,153,.0)'}, name: 'Uncertainty (± RMSE)', hoverinfo: 'skip', type: 'scatter'});
+  }
+  traces.push({x: hm, y: hv, name: 'Actual spending', type: 'scatter', mode: 'lines+markers', line: {color: FT.em, width: 3, shape: 'spline', smoothing: .5},
+    marker: {size: 7, color: '#0b1210', line: {color: FT.em, width: 2}}, fill: 'tozeroy', fillcolor: 'rgba(52,211,153,.06)',
+    hovertemplate: '%{x}<br><b>Actual</b> Rs %{y:,.0f}<extra></extra>'});
+  traces.push({x: [lastX, tx], y: [lastY, p.prediction], name: 'Forecast', type: 'scatter', mode: 'lines+markers',
+    line: {color: '#6ee7b7', width: 3, dash: 'dot'}, marker: {size: [0, 14], symbol: 'diamond', color: '#6ee7b7', line: {color: '#fff', width: 1.5}},
+    hovertemplate: '%{x}<br><b>Forecast</b> Rs %{y:,.0f}<extra></extra>'});
+  if (p.evaluated) {
+    const colors = {'Baseline (3-month average)': '#94a3b8', 'Linear Regression': FT.amber, 'Random Forest': FT.teal};
+    for (const [name, vals] of Object.entries(p.backtest.preds)) {
+      traces.push({x: p.backtest.months.map(label), y: vals, name: 'Past prediction: ' + name.split(' (')[0], type: 'scatter', mode: 'lines+markers',
+        line: {color: colors[name], width: 1.5}, marker: {size: 5}, visible: name === p.model ? true : 'legendonly',
+        hovertemplate: '%{x}<br>' + name + ' predicted Rs %{y:,.0f}<extra></extra>'});
+    }
+  }
+  const el = document.getElementById('timeline');
+  el.innerHTML = ''; el.classList.remove('chart-loading');
+  const allX = hm.concat([tx]);
+  const lay = FT.layout({margin: {t: 40, r: 20, b: 20, l: 64}, hovermode: 'x unified',
+    legend: {orientation: 'h', x: 0, y: 1.12, font: {size: 11, color: FT.ink}},
+    xaxis: {type: 'category', categoryorder: 'array', categoryarray: allX, fixedrange: false, showgrid: false,
+            rangeslider: {visible: true, thickness: .08, bgcolor: 'rgba(255,255,255,.03)', bordercolor: 'rgba(255,255,255,.08)'}},
+    yaxis: {fixedrange: true, rangemode: 'tozero'},
+    shapes: [{type: 'line', x0: tx, x1: tx, yref: 'paper', y0: 0, y1: 1, line: {color: 'rgba(110,231,183,.35)', width: 1, dash: 'dot'}}],
+    annotations: [{x: tx, y: p.prediction, text: '<b>' + FT.pkr(p.prediction) + '</b>', showarrow: true, arrowcolor: '#6ee7b7', ax: -50, ay: -40,
+      font: {color: '#fff', size: 12}, bgcolor: 'rgba(10,16,14,.9)', bordercolor: 'rgba(110,231,183,.5)', borderpad: 5}]});
+  Plotly.newPlot(el, traces, lay, FT.config).then(() => {
+    if (!FT.reduced) el.classList.add('chart-reveal');
+    // animated uncertainty band: grows open from the forecast line
+    if (hasBand && !FT.reduced) {
+      Plotly.restyle(el, {y: [[lastY, p.prediction, p.prediction, lastY]]}, [0]);
+      setTimeout(() => Plotly.animate(el, {data: [{y: [lastY, p.high, p.low, lastY]}], traces: [0]},
+        {transition: {duration: 1100, easing: 'cubic-out'}, frame: {duration: 1100, redraw: false}}), 900);
+    }
+  });
+  document.querySelectorAll('[data-range]').forEach(b => b.addEventListener('click', () => {
+    document.querySelectorAll('[data-range]').forEach(x => x.classList.toggle('active', x === b));
+    const n = +b.dataset.range;
+    Plotly.relayout(el, {'xaxis.range': n ? [Math.max(0, allX.length - 1 - n) - .5, allX.length - .5] : [-.5, allX.length - .5]});
+  }));
+
+  if (p.evaluated) {
+    const bm = p.backtest.months.map(label);
+    const colors = {'Baseline (3-month average)': '#94a3b8', 'Linear Regression': FT.amber, 'Random Forest': FT.teal};
+    const bt = [{x: bm, y: p.backtest.actual, name: 'Actual', type: 'bar', marker: {color: 'rgba(52,211,153,.25)', line: {color: FT.em, width: 1}},
+      hovertemplate: '%{x}<br>Actual: Rs %{y:,.0f}<extra></extra>'}];
+    for (const [name, vals] of Object.entries(p.backtest.preds)) {
+      bt.push({x: bm, y: vals, name: name.split(' (')[0] + (name === p.model ? ' ✓' : ''), type: 'scatter', mode: 'lines+markers',
+        line: {color: colors[name] || FT.em, width: name === p.model ? 3.5 : 1.8}, marker: {size: name === p.model ? 8 : 6},
+        hovertemplate: '%{x}<br>' + name + ': Rs %{y:,.0f}<extra></extra>'});
+    }
+    FT.plot('btChart', bt, {margin: {t: 40, r: 16, b: 34, l: 60}, legend: {orientation: 'h', x: 0, y: 1.18, font: {size: 11, color: FT.ink}}, hovermode: 'x unified'});
+  }
+}
+</script>
+{% endblock %}

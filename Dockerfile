@@ -17,8 +17,10 @@ RUN (pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.
      || pip install --no-cache-dir --timeout 120 --retries 5 -r requirements.txt) \
     && rm -rf /wheels
 
-# Copy the application code
-COPY . .
+# Copy only the application code (no database, secrets, tests or build files)
+COPY app.py finance.py ml.py models.py migrate.py ./
+COPY templates/ templates/
+COPY static/ static/
 
 # Run as a non-root user for security
 RUN useradd --create-home appuser && mkdir -p /app/data && chown -R appuser /app

@@ -1,0 +1,31 @@
+{# Reusable template helpers #}
+{% macro csrf() %}<input type="hidden" name="csrf_token" value="{{ csrf_token() }}">{% endmacro %}
+
+{# Percentage change badge. good_when_up: True for income/balance, False for spending #}
+{% macro delta(pct, good_when_up=True, suffix='vs last month') %}
+  {% if pct is none %}
+    <span class="delta flat">No previous data</span>
+  {% else %}
+    {% set up = pct >= 0 %}
+    {% set cls = 'flat' if pct|abs < 0.05 else (('up-good' if good_when_up else 'up-bad') if up else ('down-bad' if good_when_up else 'down-good')) %}
+    <span class="delta {{ cls }}"><i class="bi {{ 'bi-arrow-up-short' if up else 'bi-arrow-down-short' }}"></i>{{ '%.1f'|format(pct|abs) }}%</span>
+    <span class="text-muted">{{ suffix }}</span>
+  {% endif %}
+{% endmacro %}
+
+{% set CAT_ICONS = {'Food':'bi-basket','Transport':'bi-car-front','Bills':'bi-lightning-charge','Shopping':'bi-bag',
+  'Rent':'bi-house','Health':'bi-heart-pulse','Education':'bi-mortarboard','Entertainment':'bi-film','Other':'bi-three-dots',
+  'Salary':'bi-briefcase','Freelance':'bi-laptop','Business':'bi-shop','Gift':'bi-gift','Investment':'bi-graph-up'} %}
+
+{% macro cat_icon(t) %}
+  <span class="txn-icon {{ 'ic-green' if t.type == 'income' else 'ic-grey' }}"><i class="bi {{ CAT_ICONS.get(t.category, 'bi-circle') }}"></i></span>
+{% endmacro %}
+
+{% macro sample_badge(t) %}{% if t.is_sample %}<span class="badge-sample ms-1">Sample</span>{% endif %}{% endmacro %}
+
+{% macro desc(t) %}{{ (t.description or '')|replace('Sample · ', '') or t.category }}{% endmacro %}
+
+{% macro budget_bar(r, i=0) %}
+  <div class="progress" role="progressbar" aria-label="{{ r.category }} budget used" aria-valuenow="{{ '%.0f'|format(r.pct) }}" aria-valuemin="0" aria-valuemax="100">
+    <div class="progress-bar {{ 'over' if r.over else 'near' if r.near }}" style="width: {{ [r.pct, 100]|min }}%; animation-delay: {{ 200 + i * 90 }}ms"></div></div>
+{% endmacro %}

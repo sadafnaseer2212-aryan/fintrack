@@ -1,10 +1,12 @@
-.venv
-__pycache__
-*.pyc
-instance
 *.db
+*.pyc
+.env
+.env.example
 .git
 .gitignore
-.env
+.venv
 README.md
+__pycache__
+instance
 screenshots
+tests

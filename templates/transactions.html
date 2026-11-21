@@ -1,71 +1,95 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m with context %}
 {% block title %}Transactions{% endblock %}
+{% block page_title %}Transactions{% endblock %}
+{% block page_sub %}Record, search and manage your income and expenses{% endblock %}
 {% block content %}
-<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
-  <h3 class="fw-bold mb-0">Transactions</h3>
-  <div class="d-flex gap-2">
-    <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('export_csv', **args) }}"><i class="bi bi-filetype-csv"></i> Export CSV</a>
-    <a class="btn btn-outline-success btn-sm" href="{{ url_for('export_excel', **args) }}"><i class="bi bi-file-earmark-excel"></i> Export Excel</a>
-    <a class="btn btn-primary btn-sm" href="{{ url_for('add_transaction') }}"><i class="bi bi-plus-lg"></i> Add Entry</a>
-  </div>
-</div>
-
-<form class="card p-3 mb-3" method="get">
-  <div class="row g-2 align-items-end">
-    <div class="col-6 col-md-2"><label class="form-label small">Type</label>
-      <select name="type" class="form-select form-select-sm">
-        <option value="">All</option>
-        <option value="income" {{ 'selected' if args.type=='income' }}>Income</option>
-        <option value="expense" {{ 'selected' if args.type=='expense' }}>Expense</option>
-      </select></div>
-    <div class="col-6 col-md-2"><label class="form-label small">Category</label>
-      <select name="category" class="form-select form-select-sm">
-        <option value="">All</option>
-        {% for c in all_cats %}<option {{ 'selected' if args.category==c }}>{{ c }}</option>{% endfor %}
-      </select></div>
-    <div class="col-6 col-md-2"><label class="form-label small">From</label><input type="date" name="start" value="{{ args.start }}" class="form-control form-control-sm"></div>
-    <div class="col-6 col-md-2"><label class="form-label small">To</label><input type="date" name="end" value="{{ args.end }}" class="form-control form-control-sm"></div>
-    <div class="col-3 col-md-1"><label class="form-label small">Min</label><input type="number" step="any" name="min" value="{{ args.min }}" class="form-control form-control-sm"></div>
-    <div class="col-3 col-md-1"><label class="form-label small">Max</label><input type="number" step="any" name="max" value="{{ args.max }}" class="form-control form-control-sm"></div>
-    <div class="col-6 col-md-2"><label class="form-label small">Search</label><input name="q" value="{{ args.q }}" class="form-control form-control-sm" placeholder="Description"></div>
-    <div class="col-12 d-flex gap-2">
-      <button class="btn btn-primary btn-sm"><i class="bi bi-funnel"></i> Filter</button>
-      <a href="{{ url_for('transactions') }}" class="btn btn-light btn-sm">Reset</a>
+{% set sort = args.get('sort', 'date_desc') %}
+<form class="panel mb-3" method="get" id="filters">
+  <div class="panel-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-4 col-xl-3"><label class="form-label">Search</label>
+        <input name="q" value="{{ args.q }}" class="form-control form-control-sm" placeholder="Description or category"></div>
+      <div class="col-6 col-md-2 col-xl-1"><label class="form-label">Type</label>
+        <select name="type" class="form-select form-select-sm">
+          <option value="">All</option>
+          <option value="income" {{ 'selected' if args.type=='income' }}>Income</option>
+          <option value="expense" {{ 'selected' if args.type=='expense' }}>Expense</option>
+        </select></div>
+      <div class="col-6 col-md-2 col-xl-2"><label class="form-label">Category</label>
+        <select name="category" class="form-select form-select-sm">
+          <option value="">All</option>
+          {% for c in all_cats %}<option {{ 'selected' if args.category==c }}>{{ c }}</option>{% endfor %}
+        </select></div>
+      <div class="col-6 col-md-2 col-xl-2"><label class="form-label">From</label><input type="date" name="start" value="{{ args.start }}" class="form-control form-control-sm"></div>
+      <div class="col-6 col-md-2 col-xl-2"><label class="form-label">To</label><input type="date" name="end" value="{{ args.end }}" class="form-control form-control-sm"></div>
+      <div class="col-6 col-md-2 col-xl-1"><label class="form-label">Min Rs</label><input type="number" step="any" min="0" name="min" value="{{ args.min }}" class="form-control form-control-sm"></div>
+      <div class="col-6 col-md-2 col-xl-1"><label class="form-label">Max Rs</label><input type="number" step="any" min="0" name="max" value="{{ args.max }}" class="form-control form-control-sm"></div>
+      <div class="col-12 col-md-4 col-xl-3"><label class="form-label">Sort by</label>
+        <select name="sort" class="form-select form-select-sm" onchange="this.form.submit()">
+          {% for v, l in [('date_desc','Newest first'),('date_asc','Oldest first'),('amount_desc','Amount: high to low'),('amount_asc','Amount: low to high'),('category','Category A–Z')] %}
+            <option value="{{ v }}" {{ 'selected' if sort==v }}>{{ l }}</option>{% endfor %}
+        </select></div>
+      <div class="col-12 col-xl-9 d-flex flex-wrap gap-2 justify-content-xl-end">
+        <button class="btn btn-primary btn-sm"><i class="bi bi-funnel"></i> Apply filters</button>
+        {% if filtered %}<a href="{{ url_for('transactions') }}" class="btn btn-light btn-sm">Clear</a>{% endif %}
+        <a class="btn btn-light btn-sm" href="{{ url_for('export_csv', **args) }}"><i class="bi bi-filetype-csv"></i> CSV</a>
+        <a class="btn btn-light btn-sm" href="{{ url_for('export_excel', **args) }}"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+      </div>
     </div>
   </div>
 </form>
 
 <div class="row g-3 mb-3">
-  <div class="col-4"><div class="card p-2 text-center"><small class="text-muted">Income</small><b class="amount-income">Rs {{ '{:,.0f}'.format(total_in) }}</b></div></div>
-  <div class="col-4"><div class="card p-2 text-center"><small class="text-muted">Expenses</small><b class="amount-expense">Rs {{ '{:,.0f}'.format(total_out) }}</b></div></div>
-  <div class="col-4"><div class="card p-2 text-center"><small class="text-muted">Net</small><b>Rs {{ '{:,.0f}'.format(total_in - total_out) }}</b></div></div>
+  <div class="col-4"><div class="panel stat"><div class="label">Income{{ ' (filtered)' if filtered }}</div><div class="value tnum amt-income" style="font-size:1.1rem">{{ total_in|pkr }}</div></div></div>
+  <div class="col-4"><div class="panel stat"><div class="label">Expenses{{ ' (filtered)' if filtered }}</div><div class="value tnum" style="font-size:1.1rem">{{ total_out|pkr }}</div></div></div>
+  <div class="col-4"><div class="panel stat"><div class="label">Net</div><div class="value tnum {{ 'text-danger' if total_in - total_out < 0 }}" style="font-size:1.1rem">{{ (total_in - total_out)|pkr }}</div></div></div>
 </div>
 
-<div class="card p-0">
+<div class="panel">
   <div class="table-responsive">
-  <table class="table table-hover mb-0">
-    <thead class="table-light"><tr><th>Date</th><th>Type</th><th>Category</th><th>Description</th><th class="text-end">Amount</th><th class="text-end">Actions</th></tr></thead>
+  <table class="table table-hover align-middle">
+    <thead><tr><th>Transaction</th><th>Category</th><th class="d-none d-md-table-cell">Date</th><th class="text-end">Amount</th><th class="text-end" style="width:120px">Actions</th></tr></thead>
     <tbody>
-    {% for t in items %}
+    {% for t in page.items %}
       <tr>
-        <td>{{ t.date.strftime('%d %b %Y') }}</td>
-        <td><span class="badge {{ 'text-bg-success' if t.type=='income' else 'text-bg-danger' }}">{{ t.type|title }}</span></td>
-        <td>{{ t.category }}</td>
-        <td class="text-muted">{{ t.description }}</td>
-        <td class="text-end amount-{{ t.type }}">Rs {{ '{:,.2f}'.format(t.amount) }}</td>
+        <td><a href="{{ url_for('transaction_detail', tx_id=t.id) }}" class="d-flex align-items-center gap-2 text-body text-decoration-none">
+          {{ m.cat_icon(t) }}<div class="min-w-0"><div class="fw-medium text-truncate" style="max-width:280px">{{ m.desc(t) }}{{ m.sample_badge(t) }}</div>
+          <div class="text-muted d-md-none" style="font-size:.75rem">{{ t.date|fdate }}</div></div></a></td>
+        <td><span class="badge-soft {{ 'badge-income' if t.type=='income' else 'badge-expense' }}">{{ t.category }}</span></td>
+        <td class="d-none d-md-table-cell text-muted text-nowrap">{{ t.date|fdate }}</td>
+        <td class="text-end tnum text-nowrap {{ 'amt-income' if t.type=='income' else 'amt-expense' }}">{{ '+' if t.type=='income' else '−' }}{{ t.amount|pkr(2) }}</td>
         <td class="text-end text-nowrap">
-          <a href="{{ url_for('edit_transaction', tx_id=t.id) }}" class="btn btn-sm btn-outline-primary"><i class="bi bi-pencil"></i></a>
-          <form method="post" action="{{ url_for('delete_transaction', tx_id=t.id) }}" class="d-inline" onsubmit="return confirm('Delete this entry?')">
-            <button class="btn btn-sm btn-outline-danger"><i class="bi bi-trash"></i></button>
+          <a href="{{ url_for('transaction_detail', tx_id=t.id) }}" class="btn btn-light btn-icon btn-sm" title="View"><i class="bi bi-eye"></i></a>
+          <a href="{{ url_for('edit_transaction', tx_id=t.id) }}" class="btn btn-light btn-icon btn-sm" title="Edit"><i class="bi bi-pencil"></i></a>
+          <form method="post" action="{{ url_for('delete_transaction', tx_id=t.id) }}" class="d-inline" data-confirm="Delete this {{ t.type }} of {{ t.amount|pkr }}? This cannot be undone.">
+            {{ m.csrf() }}<input type="hidden" name="next" value="{{ request.full_path }}">
+            <button class="btn btn-outline-danger btn-icon btn-sm" title="Delete"><i class="bi bi-trash"></i></button>
           </form>
         </td>
       </tr>
     {% else %}
-      <tr><td colspan="6" class="text-center text-muted py-4">No transactions match your filters.</td></tr>
+      <tr><td colspan="5"><div class="empty"><i class="bi bi-search"></i>
+        {% if filtered %}No transactions match these filters. <a href="{{ url_for('transactions') }}">Clear filters</a>
+        {% else %}No transactions yet. <a href="{{ url_for('add_transaction') }}">Add your first one</a>{% endif %}</div></td></tr>
     {% endfor %}
     </tbody>
   </table>
   </div>
+  {% if page.total %}
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 px-3 py-2 border-top">
+    <span class="small text-muted">Showing {{ (page.page - 1) * page.per_page + 1 }}–{{ (page.page - 1) * page.per_page + page.items|length }} of {{ page.total }}</span>
+    {% if page.pages > 1 %}
+    <ul class="pagination pagination-sm mb-0">
+      <li class="page-item {{ 'disabled' if not page.has_prev }}"><a class="page-link" href="{{ url_for('transactions', page=page.prev_num, **args) }}">‹</a></li>
+      {% for p in page.iter_pages(left_edge=1, right_edge=1, left_current=1, right_current=2) %}
+        {% if p %}<li class="page-item {{ 'active' if p == page.page }}"><a class="page-link" href="{{ url_for('transactions', page=p, **args) }}">{{ p }}</a></li>
+        {% else %}<li class="page-item disabled"><span class="page-link">…</span></li>{% endif %}
+      {% endfor %}
+      <li class="page-item {{ 'disabled' if not page.has_next }}"><a class="page-link" href="{{ url_for('transactions', page=page.next_num, **args) }}">›</a></li>
+    </ul>
+    {% endif %}
+  </div>
+  {% endif %}
 </div>
-<p class="text-muted small mt-2">{{ items|length }} entries</p>
 {% endblock %}

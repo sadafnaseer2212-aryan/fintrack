@@ -1,52 +1,47 @@
 {% extends "base.html" %}
-{% block title %}Settings & Backup{% endblock %}
+{% import "_macros.html" as m with context %}
+{% block title %}Settings{% endblock %}
+{% block page_title %}Settings{% endblock %}
+{% block page_sub %}Profile, security and demonstration data{% endblock %}
 {% block content %}
-<h3 class="fw-bold mb-3">Settings &amp; Backup</h3>
 <div class="row g-3">
-  <div class="col-lg-6">
-    <div class="card p-4 h-100">
-      <h5><i class="bi bi-piggy-bank"></i> Monthly Budget</h5>
-      <p class="text-muted small">You get an overspending alert when this month's expenses go over this budget, or when the predicted spending does.</p>
-      <form method="post" class="d-flex gap-2">
-        <input type="number" step="any" min="0" name="budget" class="form-control" value="{{ '%.0f' % (current_user.monthly_budget or 0) }}">
-        <button class="btn btn-primary">Save</button>
-      </form>
-    </div>
-  </div>
-  <div class="col-lg-6">
-    <div class="card p-4 h-100">
-      <h5><i class="bi bi-download"></i> Export Data</h5>
-      <p class="text-muted small">Download all {{ count }} entries.</p>
-      <div class="d-flex gap-2 flex-wrap">
-        <a href="{{ url_for('export_csv') }}" class="btn btn-outline-secondary"><i class="bi bi-filetype-csv"></i> CSV</a>
-        <a href="{{ url_for('export_excel') }}" class="btn btn-outline-success"><i class="bi bi-file-earmark-excel"></i> Excel</a>
+  <div class="col-lg-6"><div class="panel h-100"><div class="panel-body">
+    <h3 class="panel-title mb-3">Profile</h3>
+    <form method="post">
+      {{ m.csrf() }}<input type="hidden" name="action" value="profile">
+      <div class="mb-3"><label class="form-label">Username</label><input class="form-control" value="{{ current_user.username }}" disabled></div>
+      <div class="mb-3"><label class="form-label" for="email">Email</label><input id="email" type="email" name="email" class="form-control" value="{{ current_user.email }}" required></div>
+      <div class="small text-muted mb-3">Member since {{ current_user.created_at|fdate if current_user.created_at else '—' }} · {{ count }} transactions</div>
+      <button class="btn btn-primary">Save profile</button>
+    </form>
+  </div></div></div>
+  <div class="col-lg-6"><div class="panel h-100"><div class="panel-body">
+    <h3 class="panel-title mb-3">Change password</h3>
+    <form method="post">
+      {{ m.csrf() }}<input type="hidden" name="action" value="password">
+      <div class="mb-3"><label class="form-label" for="cur">Current password</label><input id="cur" type="password" name="current" class="form-control" required autocomplete="current-password"></div>
+      <div class="row g-2 mb-3">
+        <div class="col-sm-6"><label class="form-label" for="new">New password</label><input id="new" type="password" name="new" minlength="6" class="form-control" required autocomplete="new-password"></div>
+        <div class="col-sm-6"><label class="form-label" for="conf">Confirm new password</label><input id="conf" type="password" name="confirm" minlength="6" class="form-control" required autocomplete="new-password"></div>
       </div>
-    </div>
-  </div>
-  <div class="col-lg-6">
-    <div class="card p-4 h-100">
-      <h5><i class="bi bi-cloud-arrow-down"></i> Backup</h5>
-      <p class="text-muted small">Save a complete backup of your data (JSON file) that you can restore later.</p>
-      <a href="{{ url_for('backup') }}" class="btn btn-primary"><i class="bi bi-save"></i> Download backup</a>
-    </div>
-  </div>
-  <div class="col-lg-6">
-    <div class="card p-4 h-100">
-      <h5><i class="bi bi-cloud-arrow-up"></i> Restore</h5>
-      <form method="post" action="{{ url_for('restore') }}" enctype="multipart/form-data">
-        <input type="file" name="file" accept=".json" class="form-control mb-2" required>
-        <div class="form-check"><input class="form-check-input" type="radio" name="mode" value="merge" id="m1" checked><label class="form-check-label" for="m1">Add to existing data</label></div>
-        <div class="form-check mb-2"><input class="form-check-input" type="radio" name="mode" value="replace" id="m2"><label class="form-check-label" for="m2">Replace all existing data</label></div>
-        <button class="btn btn-warning" onclick="return document.getElementById('m2').checked ? confirm('This deletes your current entries. Continue?') : true"><i class="bi bi-upload"></i> Restore</button>
-      </form>
-    </div>
-  </div>
-  <div class="col-12">
-    <div class="card p-4">
-      <h5><i class="bi bi-magic"></i> Demo Data</h5>
-      <p class="text-muted small mb-2">Add 12 months of realistic sample income and expenses to try the charts and the expense prediction.</p>
-      <form method="post" action="{{ url_for('sample_data') }}"><button class="btn btn-outline-primary">Load sample data</button></form>
-    </div>
-  </div>
+      <button class="btn btn-primary">Change password</button>
+    </form>
+  </div></div></div>
+  <div class="col-lg-6"><div class="panel h-100"><div class="panel-body">
+    <h3 class="panel-title mb-1">Budgets & data</h3>
+    <p class="small text-muted">Manage category budgets and the overall monthly budget on the Budgets page. Download or restore your data on the Export & Backup page.</p>
+    <div class="d-flex gap-2 flex-wrap"><a href="{{ url_for('budgets') }}" class="btn btn-light"><i class="bi bi-wallet2"></i> Budgets</a>
+      <a href="{{ url_for('data') }}" class="btn btn-light"><i class="bi bi-cloud-arrow-down"></i> Export & Backup</a></div>
+  </div></div></div>
+  <div class="col-lg-6"><div class="panel h-100"><div class="panel-body">
+    <h3 class="panel-title mb-1">Demonstration data</h3>
+    <p class="small text-muted">Loads 12 months of realistic sample transactions and example budgets, so you can explore the charts and AI forecast. Sample entries are marked “Sample” and can be removed at any time without touching your own records.</p>
+    {% if sample_count %}
+      <form method="post" action="{{ url_for('remove_sample_data') }}" data-confirm="Remove {{ sample_count }} sample transactions?">{{ m.csrf() }}
+        <button class="btn btn-outline-danger"><i class="bi bi-trash"></i> Remove {{ sample_count }} sample transactions</button></form>
+    {% else %}
+      <form method="post" action="{{ url_for('sample_data') }}">{{ m.csrf() }}<button class="btn btn-outline-primary"><i class="bi bi-magic"></i> Load sample data</button></form>
+    {% endif %}
+  </div></div></div>
 </div>
 {% endblock %}

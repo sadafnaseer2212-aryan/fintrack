@@ -1,44 +1,92 @@
 {% extends "base.html" %}
+{% import "_macros.html" as m with context %}
 {% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% block page_sub %}<a href="{{ url_for('transactions') }}">Transactions</a> / {{ title }}{% endblock %}
 {% block content %}
-<div class="row justify-content-center">
-  <div class="col-md-7 col-lg-5">
-    <div class="card p-4">
-      <h4 class="fw-bold mb-3">{{ title }}</h4>
-      <form method="post">
-        <div class="btn-group w-100 mb-3" role="group">
-          <input type="radio" class="btn-check" name="type" id="t-exp" value="expense" {{ 'checked' if tx.type!='income' }}>
-          <label class="btn btn-outline-danger" for="t-exp"><i class="bi bi-dash-circle"></i> Expense</label>
-          <input type="radio" class="btn-check" name="type" id="t-inc" value="income" {{ 'checked' if tx.type=='income' }}>
-          <label class="btn btn-outline-success" for="t-inc"><i class="bi bi-plus-circle"></i> Income</label>
+<div class="row g-3 justify-content-center">
+  <div class="col-lg-7 col-xl-6">
+    <div class="panel"><div class="panel-body p-4">
+      <form method="post" novalidate id="txForm">
+        {{ m.csrf() }}
+        <div class="btn-group w-100 mb-4" role="group" aria-label="Transaction type">
+          <input type="radio" class="btn-check" name="type" id="t-exp" value="expense" {{ 'checked' if tx.type != 'income' }}>
+          <label class="btn btn-outline-primary py-2" for="t-exp"><i class="bi bi-box-arrow-up"></i> Expense</label>
+          <input type="radio" class="btn-check" name="type" id="t-inc" value="income" {{ 'checked' if tx.type == 'income' }}>
+          <label class="btn btn-outline-primary py-2" for="t-inc"><i class="bi bi-box-arrow-in-down"></i> Income</label>
         </div>
-        <div class="mb-3"><label class="form-label">Amount (Rs)</label>
-          <input type="number" step="0.01" min="0.01" name="amount" class="form-control form-control-lg" value="{{ tx.amount or '' }}" required autofocus></div>
-        <div class="mb-3"><label class="form-label">Category</label>
-          <select name="category" id="category" class="form-select" required data-current="{{ tx.category or '' }}"></select></div>
-        <div class="mb-3"><label class="form-label">Date</label>
-          <input type="date" name="date" class="form-control" value="{{ tx.date.isoformat() if tx.date else today.isoformat() }}" required></div>
-        <div class="mb-3"><label class="form-label">Description</label>
-          <input name="description" maxlength="200" class="form-control" value="{{ tx.description or '' }}" placeholder="e.g. Grocery from Imtiaz"></div>
-        <div class="d-flex gap-2">
-          <button class="btn btn-primary flex-fill">Save</button>
+        <label class="form-label" for="amount">Amount (PKR)</label>
+        <div class="input-group mb-1"><span class="input-group-text" style="font-family:var(--font-display);font-size:1.1rem">Rs</span>
+          <input type="number" step="0.01" min="0.01" max="9999999999" id="amount" name="amount" class="form-control form-control-lg tnum"
+                 value="{{ request.form.amount if request.method == 'POST' else ('%.2f'|format(tx.amount) if tx.amount else '') }}" required autofocus placeholder="0.00"></div>
+        <div class="d-flex flex-wrap gap-1 mb-1" id="quick">
+          {% for q in [500, 1000, 5000, 10000] %}<button type="button" class="btn btn-light btn-sm py-0" data-add="{{ q }}">+{{ '{:,}'.format(q) }}</button>{% endfor %}
+        </div>
+        <div class="invalid-feedback d-block small mb-2" id="amountErr"></div>
+        <div class="row g-3 mb-3">
+          <div class="col-sm-6"><label class="form-label" for="category">Category</label>
+            <select name="category" id="category" class="form-select" required data-current="{{ tx.category or '' }}"></select></div>
+          <div class="col-sm-6"><label class="form-label" for="date">Date</label>
+            <input type="date" id="date" name="date" class="form-control" value="{{ request.form.date if request.method == 'POST' else (tx.date.isoformat() if tx.date else today.isoformat()) }}" required></div>
+        </div>
+        <div class="mb-4"><label class="form-label" for="description">Description <span class="text-muted fw-normal">(optional)</span></label>
+          <input id="description" name="description" maxlength="200" class="form-control" value="{{ tx.description or '' }}" placeholder="e.g. Weekly groceries"></div>
+        <div class="d-flex flex-wrap gap-2">
+          <button class="btn btn-primary flex-fill py-2"><i class="bi bi-check2"></i> Save transaction</button>
+          {% if not tx.id %}<button class="btn btn-light" name="another" value="1" data-no-spin="1">Save & add another</button>{% endif %}
           <a href="{{ url_for('transactions') }}" class="btn btn-light">Cancel</a>
         </div>
       </form>
-    </div>
+    </div></div>
+  </div>
+  <div class="col-lg-5 col-xl-4">
+    <div class="panel glow-panel mb-3"><div class="panel-body">
+      <div class="eyebrow mb-2">{{ today.strftime('%B %Y') }} so far</div>
+      <div class="row g-2">
+        <div class="col-6"><div class="kv">Income</div><div class="display tnum amt-income" style="font-size:1.25rem" data-count="{{ side_income }}" data-prefix="Rs ">{{ side_income|pkr }}</div></div>
+        <div class="col-6"><div class="kv">Expenses</div><div class="display tnum" style="font-size:1.25rem" data-count="{{ side_expense }}" data-prefix="Rs ">{{ side_expense|pkr }}</div></div>
+      </div>
+      <div class="kv mt-2">{{ side_count }} entries this month · net <b>{{ (side_income - side_expense)|pkr }}</b></div>
+      <div class="kv mt-2" id="preview" style="display:none"></div>
+    </div></div>
+    <div class="panel"><div class="panel-head"><h3 class="panel-title">Latest entries</h3></div>
+      <div class="panel-body pt-2">
+        {% for t in side_recent %}
+          <div class="list-row">{{ m.cat_icon(t) }}
+            <div class="me-auto min-w-0"><div class="small fw-semibold text-truncate" style="color:#fff">{{ m.desc(t) }}</div><div class="text-muted" style="font-size:.72rem">{{ t.category }} · {{ t.date|fdate }}</div></div>
+            <span class="small tnum {{ 'amt-income' if t.type=='income' else '' }}">{{ '+' if t.type=='income' else '−' }}{{ t.amount|pkr }}</span></div>
+        {% else %}<div class="empty py-3"><i class="bi bi-receipt"></i>Nothing recorded yet.</div>{% endfor %}
+      </div></div>
   </div>
 </div>
 {% endblock %}
 {% block scripts %}
 <script>
 const CATS = {{ CATEGORIES | tojson }};
-const sel = document.getElementById('category');
+const sel = document.getElementById('category'), amt = document.getElementById('amount'), prev = document.getElementById('preview');
+const base = {income: {{ side_income }}, expense: {{ side_expense }}}, editing = {{ 'true' if tx.id else 'false' }};
 function fill() {
   const type = document.querySelector('input[name=type]:checked').value;
   const cur = sel.value || sel.dataset.current;
   sel.innerHTML = CATS[type].map(c => `<option ${c === cur ? 'selected' : ''}>${c}</option>`).join('');
+  preview();
+}
+function preview() {   // live "after saving" preview of this month's totals (new entries only)
+  const v = parseFloat(amt.value), type = document.querySelector('input[name=type]:checked').value;
+  if (editing || !(v > 0)) { prev.style.display = 'none'; return; }
+  const inc = base.income + (type === 'income' ? v : 0), exp = base.expense + (type === 'expense' ? v : 0);
+  prev.style.display = ''; prev.innerHTML = `After saving: income <b>${FT.pkr(inc)}</b> · expenses <b>${FT.pkr(exp)}</b>`;
 }
 document.querySelectorAll('input[name=type]').forEach(r => r.addEventListener('change', fill));
+amt.addEventListener('input', preview);
+document.querySelectorAll('[data-add]').forEach(b => b.addEventListener('click', () => {
+  amt.value = ((parseFloat(amt.value) || 0) + +b.dataset.add).toFixed(2); amt.dispatchEvent(new Event('input')); amt.focus();
+}));
 fill();
+document.getElementById('txForm').addEventListener('submit', (e) => {
+  const v = parseFloat(amt.value), err = document.getElementById('amountErr');
+  if (!(v > 0)) { e.preventDefault(); e.stopImmediatePropagation(); err.textContent = 'Enter an amount greater than 0.'; amt.focus(); }
+  else err.textContent = '';
+}, true);
 </script>
 {% endblock %}

@@ -1,0 +1,11 @@
+<script>
+document.querySelectorAll('[data-toggle-pw]').forEach(b => b.addEventListener('click', () => {
+  const i = document.getElementById(b.dataset.togglePw); const show = i.type === 'password';
+  i.type = show ? 'text' : 'password'; b.innerHTML = `<i class="bi bi-eye${show ? '-slash' : ''}"></i>`;
+}));
+</script>
+<script type="module">
+import {terrain, webglAvailable} from "{{ url_for('static', filename='js/fin3d.js') }}";
+const el = document.getElementById('loginScene');
+if (el && webglAvailable()) { try { terrain(el); } catch (e) { console.warn('3D scene unavailable', e); } }
+</script>

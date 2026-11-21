@@ -1,10 +1,45 @@
 # FinTrack: Personal Finance Tracker with Expense Prediction
 
-A Python web application for recording income and expenses, analysing spending with interactive charts, and **predicting next month's expenses with machine learning**. It's packaged as a Docker image and deployed on Render.
+A premium personal-finance analytics web app built with **Python/Flask**, **scikit-learn** and **Three.js**. You record income and expenses, manage budgets, explore interactive 3D and 2D analytics, and get a **machine-learning forecast of next month's spending** that is evaluated on your own history.
 
-> Project: *Personal Finance Tracker with Expense Prediction*. Domain: Machine Learning / Web.
+> Final Year Project: *Personal Finance Tracker with Expense Prediction* (Machine Learning / Web).
 
-**Live demo:** `https://<your-app>.onrender.com` (replace after deploying)
+![Dashboard](screenshots/01-dashboard.png)
+
+---
+
+## Run it on Windows (about 5 minutes)
+
+**Requirements:** Python **3.10 or newer** (tested on 3.12 and 3.14) from [python.org](https://www.python.org/downloads/) (tick *"Add python.exe to PATH"* during install). The first install needs internet for `pip`. After that the app runs **fully offline**, because every frontend library is bundled.
+
+Open **PowerShell** in the folder where you extracted the ZIP:
+
+```powershell
+cd finance-tracker
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python app.py
+```
+
+Open **http://localhost:5000**, click **Create an account**, then click **Load sample data** on the dashboard to explore every feature right away.
+
+- **No extra build or database step is needed.** The SQLite database (`instance/finance.db`) is created automatically on first start, and there is no JavaScript build step.
+- **To stop the app,** press `CTRL+C`. To run it again later: `cd finance-tracker`, then `.\.venv\Scripts\Activate.ps1`, then `python app.py`.
+- **If `Activate.ps1` is blocked** ("running scripts is disabled"), run this once in the same window and try again:
+  ```powershell
+  Set-ExecutionPolicy -Scope Process -ExecutionPolicy Bypass
+  ```
+- **Shortcut:** double-click **`run_windows.bat`**. It creates the virtual environment, installs the requirements the first time, and starts the app.
+- **Optional checks:** `python -m unittest discover tests -v` runs the 42 automated tests, and `python migrate.py` backs up and updates an existing database.
+
+### Troubleshooting
+| Problem | Fix |
+|---|---|
+| `py` is not recognized | Reinstall Python with "Add to PATH" ticked, or use `python -m venv .venv` |
+| `pip install` fails on numpy/scikit-learn | Use a released Python version (3.10 or newer) and upgrade pip: `python -m pip install --upgrade pip` |
+| Port 5000 already in use | `$env:PORT=5050; python app.py`, then open http://localhost:5050 |
+| 3D views don't appear | Your browser or graphics driver has WebGL turned off. The app switches to 2D charts automatically, so everything still works |
 
 ---
 
@@ -12,94 +47,84 @@ A Python web application for recording income and expenses, analysing spending w
 
 | Module | What it does |
 |---|---|
-| **Authentication & Dashboard** | Secure registration and login (hashed passwords). The dashboard shows balance, total income and expenses, this month's spending, charts, recent entries and the AI prediction. |
-| **Income & Expense Management** | Add, edit, view and delete entries. Categories include Food, Transport, Bills, Shopping, Rent, Salary and Freelance. Filter by type, category, date range, amount range or description. |
-| **Visualization & Reports** | Monthly and yearly reports with interactive Plotly charts (income vs. expense, net savings, spending by category). Months more than 20% above average are highlighted. Overspending alerts flag categories well above their usual level and a broken monthly budget. |
-| **Expense Prediction (ML)** | scikit-learn **Linear Regression** and **Random Forest** models are trained on the user's monthly expense history to predict next month's total. Shows the trend (rising or falling) and warns if the prediction exceeds the budget. |
-| **Export & Backup** | Export (filtered) data to **CSV** or **Excel (.xlsx)**. Full **JSON backup**, with restore in merge or replace mode. |
-| **Demo data** | One click loads 12 months of realistic sample data, so the charts and prediction work right away. |
+| **Authentication & security** | Registration, login and logout. Passwords are hashed. Every page requires a login, and users can only see their own data. CSRF protection on every form, open-redirect-safe login, HttpOnly/SameSite cookies, secrets from environment variables, custom error pages. |
+| **Dashboard** | Animated KPI tiles with 12-month sparklines. An **interactive 3D financial overview** (income, expenses and net savings by month: drag to rotate, hover for values). The AI forecast card with a budget gauge. A **3D expense-category ring** (depth shows each category's share; hover to lift a slice). Animated budget bars and recent transactions. Every 3D view has a 2D switch. |
+| **Transactions** | Add, edit, view and delete (with confirmation). Categories. Search, filters (type, category, date range, amount), sorting, pagination. The add form shows a live preview of this month's totals and quick-amount buttons. |
+| **Budgets** | Category budgets that repeat monthly or apply to one month only, plus an overall monthly budget. Budget vs. actual progress bars, overrun detection and alerts. |
+| **Reports & Analytics** | Monthly (daily breakdown), yearly and custom date-range reports: income vs. expenses, net savings, savings rate, category breakdown, high-spending months, budget overruns, largest expenses, income sources. |
+| **AI Expense Prediction** | Baseline, Linear Regression and Random Forest models compared with a chronological walk-forward test using **MAE, RMSE and MAPE**. The best model is selected automatically. An interactive timeline shows actual vs. forecast spending with an animated uncertainty band, a history range slider and past out-of-sample predictions. Model comparison cards, a backtest chart and prediction history are also included. |
+| **Export & Backup** | CSV export, and Excel export (Transactions, Monthly Summary and Budgets sheets). A full JSON backup. Restore validates the whole file first, supports merge or replace, keeps a safety copy before a replace, and rolls back on error. |
+| **Demo data** | One click loads 12 months of realistic sample data. It is labelled "Sample" everywhere and can be removed without touching real records. |
 
-## Tech stack
+### Design & motion
+- A dark emerald and graphite design system with layered ambient backgrounds and glass surfaces, Inter and Space Grotesk typography, and consistent styling on every page.
+- **3D (Three.js):** the interactive overview bars, the category ring, and an animated "market terrain" on the sign-in page. Pixel ratio is capped and rendering pauses when a view is off-screen or the tab is hidden.
+- **Motion (GSAP and CSS):** page transitions, count-up KPI values, charts that grow in, sparklines that draw themselves, animated budget bars and confidence band, animated dropdowns, and toast notifications when you save.
+- **Accessibility:** every 3D view has a 2D alternative and falls back to it automatically without WebGL. *Reduced motion* is respected (animations off, static scenes). 3D canvases support keyboard rotation (arrow keys), and `/` focuses the search box.
 
-- **Frontend:** HTML, CSS, Bootstrap 5, JavaScript, Plotly.js
-- **Backend:** Python 3.12, Flask, Flask-Login, Flask-SQLAlchemy
-- **Database:** SQLite
-- **Machine learning:** scikit-learn (LinearRegression, RandomForestRegressor), NumPy
-- **Export:** csv, openpyxl
-- **Deployment:** Docker, docker-compose, Gunicorn, Render
+## How the expense prediction works (`ml.py`)
 
-## How the expense prediction works
-
-1. All of the user's expenses are grouped into **monthly totals**. Months with no spending count as 0.
-2. The current month is left out of training because it isn't finished yet.
-3. **Linear Regression** fits a straight line through the monthly totals (x = month number, y = total spent) and extends it to next month. This captures the overall trend.
-4. **Random Forest** (used once there are at least 5 months of data) learns from the previous 2 months' totals to predict the next one. This captures recent patterns.
-5. The final prediction is the **average of both models**. It appears on the dashboard together with each model's value, the trend direction and the monthly average.
-
-At least 2 past months of expenses are needed before a prediction can be made.
+1. Expenses are aggregated into **monthly totals**. The **current month is excluded** because it is incomplete.
+2. Forecasting next month from the last completed month is therefore a **2-step-ahead** problem.
+3. **Models (scikit-learn):**
+   - *Baseline:* the average of the last 3 months.
+   - *Linear Regression:* month index → total, which captures the long-term trend.
+   - *Random Forest Regressor:* uses the previous 3 monthly totals as lag features and forecasts recursively.
+4. **Walk-forward evaluation without data leakage:** for each of the last 4 months, every model is trained only on data available 2 months earlier. MAE, RMSE and MAPE are reported, and a unit test checks that test-period values can't influence the forecasts made for them.
+5. The model with the **lowest MAE** is selected, retrained on all completed months, and its RMSE gives the ± uncertainty band.
+6. **Honesty rules:** with fewer than 3 completed months, no forecast is made. With 3–8 months, a labelled low-confidence baseline is shown. Each forecast is stored and compared with the actual spending once that month ends.
 
 ## Project structure
 
 ```
 finance-tracker/
-├── app.py               # Flask routes: auth, CRUD, filters, reports, export, backup
-├── models.py            # Database models (User, Transaction) and categories
-├── ml.py                # Expense prediction module (scikit-learn)
-├── templates/           # Jinja2 HTML pages
-├── static/style.css     # Custom styling
-├── tests/test_app.py    # Automated tests
-├── requirements.txt
-├── Dockerfile           # Production Docker image (Gunicorn)
-├── docker-compose.yml   # One-command local run with a persistent volume
-└── render.yaml          # Render deployment blueprint
+├── app.py               # Flask app & routes (entry point: python app.py)
+├── finance.py           # calculations: months, totals, budgets, alerts
+├── ml.py                # expense prediction: models, walk-forward evaluation, forecast
+├── models.py            # database models: User, Transaction, Budget, PredictionLog
+├── migrate.py           # safe migration with automatic backup / rollback
+├── requirements.txt     # Python dependencies
+├── .env.example         # optional configuration
+├── run_windows.bat      # one-click start on Windows
+├── templates/           # Jinja2 pages (base layout, macros, every page)
+├── static/
+│   ├── style.css        # design system
+│   ├── app.js           # charts theme, animations, toasts, sparklines, 3D/2D switch
+│   ├── js/fin3d.js      # Three.js scenes (overview bars, category ring, login terrain)
+│   └── vendor/          # bundled libraries: Three.js, GSAP, Plotly, Bootstrap, icons, fonts
+├── tests/test_app.py    # 42 automated tests
+├── screenshots/         # UI screenshots
+└── Dockerfile, docker-compose.yml, render.yaml   # optional deployment files
 ```
 
-## Run locally (without Docker)
+**Bundled frontend libraries (no internet needed):** Three.js 0.160, GSAP 3.12, Plotly.js 2.35, Bootstrap 5.3, Bootstrap Icons 1.11, and the Inter and Space Grotesk fonts (all open-source licences).
+
+## Database & migrations
+
+SQLite at `instance/finance.db`, created automatically. To upgrade an older database safely:
+
+```powershell
+python migrate.py                       # backs up to instance\backups\, then adds any missing tables
+python migrate.py --list                # list backups
+python migrate.py --rollback instance\backups\finance-YYYYMMDD-HHMMSS.db
+```
+
+Migrations are additive only: existing users and transactions are never altered or deleted.
+
+## Configuration
+
+None is needed to run locally. For production, set `SECRET_KEY` to a long random value (see `.env.example`). The other options are `DATABASE_PATH`, `HOST`, `PORT` and `FLASK_DEBUG` (development only).
+
+## Optional: Docker (not required for local use)
 
 ```bash
-python -m venv .venv
-.venv\Scripts\activate          # Windows  (Linux/Mac: source .venv/bin/activate)
-pip install -r requirements.txt
-python app.py
+docker compose up --build -d      # http://localhost:5000, data persisted in the finance-data volume
 ```
-Open http://localhost:5000, register an account, and click **Load sample data**.
+The image runs Gunicorn as a non-root user with a `/health` check and contains no database or secrets.
 
-Local demo account (only in the local `instance/finance.db`): username `demo`, password `demo123`.
+## Known limitations
 
-Run the tests:
-```bash
-python -m unittest discover tests -v
-```
-
-## Run with Docker
-
-```bash
-docker compose up --build -d
-```
-Open http://localhost:5000. Data is stored in the `finance-data` volume, so it survives restarts.
-
-Or use plain Docker commands:
-```bash
-docker build -t finance-tracker .
-docker run -d -p 5000:5000 --name finance-tracker finance-tracker
-```
-
-Stop it with `docker compose down`.
-
-## Deploy on Render (free)
-
-1. Push this folder to a GitHub repository.
-2. Sign in to https://render.com with GitHub.
-3. Click **New → Blueprint**, select the repository, and Render reads `render.yaml`.
-   (Or click **New → Web Service**, choose the repo and pick **Docker** as the runtime.)
-4. Click **Deploy**. Render builds the Docker image and gives you a public URL.
-
-> **Note:** On Render's free plan the filesystem resets whenever the service restarts or redeploys, so SQLite data is temporary. Use **Settings → Download backup** to keep your data, or attach a paid persistent disk mounted at `/app/data`. The free service also sleeps after 15 minutes without traffic, so the first request afterwards takes about 30–50 seconds.
-
-## Environment variables
-
-| Variable | Default | Purpose |
-|---|---|---|
-| `SECRET_KEY` | dev value | Flask session signing key (set a random value in production) |
-| `DATABASE_PATH` | `instance/finance.db` | SQLite file location |
-| `PORT` | `5000` | Port Gunicorn listens on (set automatically by Render) |
+- SQLite suits a single server. Multi-instance hosting needs PostgreSQL or MySQL.
+- On Render's free plan the disk is temporary, so data resets on redeploy. Use a persistent disk, or rely on backups.
+- Forecasts become reliable only after about 9 months of real data, and the app says so.
+- There is no email password reset (it needs an email service). Passwords can be changed in Settings.

@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Budgets{% endblock %}
+{% block page_title %}Budgets{% endblock %}
+{% block page_sub %}Set monthly limits and compare them with actual spending{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <h2 class="h6 fw-semibold mb-0">Budget performance · {{ month|mlabel('%B %Y') }}</h2>
+  <form method="get" class="d-flex gap-2">
+    <input type="month" name="month" value="{{ month }}" class="form-control form-control-sm" onchange="this.form.submit()" aria-label="Month">
+  </form>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3"><div class="panel stat"><div class="label">Category budgets</div><div class="value tnum">{{ budget_total|pkr }}</div><div class="meta">{{ rows|length }} categories</div></div></div>
+  <div class="col-6 col-lg-3"><div class="panel stat"><div class="label">Spent in budgeted categories</div>
+    {% set sb = rows|sum(attribute='spent') %}<div class="value tnum">{{ sb|pkr }}</div>
+    <div class="meta">{% if budget_total %}{{ '%.0f'|format(sb / budget_total * 100) }}% used{% else %}—{% endif %}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="panel stat"><div class="label">Total spent this month</div><div class="value tnum">{{ spent_total|pkr }}</div>
+    <div class="meta">{% if current_user.monthly_budget %}of {{ current_user.monthly_budget|pkr }} overall budget{% else %}No overall budget set{% endif %}</div></div></div>
+  <div class="col-6 col-lg-3"><div class="panel stat"><div class="label">Over budget</div>
+    {% set over = rows|selectattr('over')|list %}<div class="value tnum {{ 'text-danger' if over }}">{{ over|length }}</div>
+    <div class="meta">{{ over|map(attribute='category')|join(', ') or 'All categories within budget' }}</div></div></div>
+</div>
+
+{% set overall = alerts|selectattr('title', 'equalto', 'Monthly budget exceeded')|list %}
+{% if overall %}
+<div class="alert alert-danger py-2 mb-3"><i class="bi bi-exclamation-octagon me-1"></i><b>{{ overall[0].title }}.</b> {{ overall[0].text }}</div>
+{% endif %}
+
+<div class="row g-3">
+  <div class="col-xl-8">
+    <div class="panel mb-3">
+      <div class="panel-head"><h3 class="panel-title">Budget vs. actual</h3><span class="panel-sub">{{ month|mlabel('%B %Y') }}</span></div>
+      <div class="panel-body">
+        {% for r in rows %}
+          <div class="py-2 {{ 'border-bottom' if not loop.last }}">
+            <div class="d-flex flex-wrap justify-content-between gap-2 mb-1">
+              <span class="fw-semibold">{{ r.category }}
+                {% if r.over %}<span class="badge-soft ms-1" style="background:var(--danger-bg);color:var(--danger)">Over by {{ (-r.remaining)|pkr }}</span>
+                {% elif r.near %}<span class="badge-soft ms-1" style="background:var(--warn-bg);color:var(--warn)">{{ '%.0f'|format(r.pct) }}% used</span>{% endif %}</span>
+              <span class="small tnum"><b>{{ r.spent|pkr }}</b> <span class="text-muted">of {{ r.budget|pkr }}</span>
+                {% if not r.over %}<span class="text-muted">· {{ r.remaining|pkr }} left</span>{% endif %}</span>
+            </div>
+            {{ m.budget_bar(r) }}
+          </div>
+        {% else %}
+          <div class="empty"><i class="bi bi-wallet2"></i>No budgets apply to {{ month|mlabel }}. Create one with the form.</div>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if unbudgeted %}
+    <div class="panel mb-3"><div class="panel-head"><h3 class="panel-title">Spending without a budget</h3><span class="panel-sub">{{ month|mlabel }}</span></div>
+      <div class="panel-body pt-2">{% for c, v in unbudgeted.items() %}
+        <div class="d-flex justify-content-between small py-1"><span>{{ c }}</span><span class="tnum fw-semibold">{{ v|pkr }}</span></div>{% endfor %}</div></div>
+    {% endif %}
+
+    <div class="panel">
+      <div class="panel-head"><h3 class="panel-title">All budgets</h3><span class="panel-sub">{{ all_budgets|length }} saved</span></div>
+      <div class="table-responsive mt-2">
+        <table class="table align-middle">
+          <thead><tr><th>Category</th><th>Applies to</th><th class="text-end">Monthly limit</th><th class="text-end" style="width:100px">Actions</th></tr></thead>
+          <tbody>
+          {% for b in all_budgets %}
+            <tr><td class="fw-medium">{{ b.category }}</td>
+              <td>{% if b.month %}<span class="badge-soft">{{ b.month|mlabel('%B %Y') }} only</span>{% else %}<span class="badge-soft badge-income">Every month</span>{% endif %}</td>
+              <td class="text-end tnum">{{ b.amount|pkr }}</td>
+              <td class="text-end text-nowrap">
+                <a href="{{ url_for('edit_budget', budget_id=b.id) }}" class="btn btn-light btn-icon btn-sm" title="Edit"><i class="bi bi-pencil"></i></a>
+                <form method="post" action="{{ url_for('delete_budget', budget_id=b.id) }}" class="d-inline" data-confirm="Delete the {{ b.category }} budget?">{{ m.csrf() }}
+                  <button class="btn btn-outline-danger btn-icon btn-sm" title="Delete"><i class="bi bi-trash"></i></button></form></td></tr>
+          {% else %}
+            <tr><td colspan="4" class="text-center text-muted py-4">No budgets yet.</td></tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-xl-4">
+    <div class="panel mb-3"><div class="panel-body">
+      <h3 class="panel-title mb-3">Create category budget</h3>
+      <form method="post" action="{{ url_for('budgets', month=month) }}">
+        {{ m.csrf() }}
+        <div class="mb-2"><label class="form-label" for="bcat">Expense category</label>
+          <select id="bcat" name="category" class="form-select" required>
+            {% for c in CATEGORIES.expense %}<option>{{ c }}</option>{% endfor %}</select></div>
+        <div class="mb-2"><label class="form-label" for="bamt">Monthly limit (PKR)</label>
+          <input id="bamt" type="number" step="0.01" min="1" name="amount" class="form-control" required placeholder="e.g. 20000"></div>
+        <div class="mb-2"><label class="form-label">Applies to</label>
+          <div class="form-check"><input class="form-check-input" type="radio" name="scope" value="recurring" id="s1" checked onchange="bm.disabled=true"><label class="form-check-label small" for="s1">Every month</label></div>
+          <div class="form-check"><input class="form-check-input" type="radio" name="scope" value="month" id="s2" onchange="bm.disabled=false"><label class="form-check-label small" for="s2">One month only</label></div>
+          <input id="bm" type="month" name="month" value="{{ month }}" class="form-control form-control-sm mt-1" disabled></div>
+        <p class="small text-muted mb-3">A one-month budget overrides the every-month budget for that month. Saving an existing category and period updates it.</p>
+        <button class="btn btn-primary w-100"><i class="bi bi-plus-lg"></i> Save budget</button>
+      </form>
+    </div></div>
+    <div class="panel"><div class="panel-body">
+      <h3 class="panel-title mb-1">Overall monthly budget</h3>
+      <p class="small text-muted">Total spending limit across all categories. Used for alerts and compared with the AI forecast.</p>
+      <form method="post" action="{{ url_for('overall_budget') }}" class="d-flex gap-2">
+        {{ m.csrf() }}
+        <div class="input-group"><span class="input-group-text">Rs</span>
+          <input type="number" step="any" min="0" name="budget" class="form-control" value="{{ '%.0f'|format(current_user.monthly_budget or 0) }}" aria-label="Overall monthly budget"></div>
+        <button class="btn btn-primary">Save</button>
+      </form>
+      <div class="small text-muted mt-1">Enter 0 to turn it off.</div>
+    </div></div>
+  </div>
+</div>
+{% endblock %}

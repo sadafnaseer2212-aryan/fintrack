@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+{% macro err_body(home_url, home_label) %}
+<div class="panel glow-panel text-center mx-auto" style="max-width:520px">
+  <div class="panel-body py-5 px-4">
+    <div class="display fw-bold" style="font-size:5rem;line-height:1;background:linear-gradient(180deg,#fff,#34d399);-webkit-background-clip:text;background-clip:text;color:transparent">{{ code }}</div>
+    <h2 class="h4 mt-3 mb-2">{{ title }}</h2>
+    <p class="text-muted small mb-4">{{ detail or "The page you requested couldn't be shown. It may have moved, or you may not have access to it." }}</p>
+    <div class="d-flex justify-content-center gap-2">
+      <a href="{{ home_url }}" class="btn btn-primary btn-sm"><i class="bi bi-house"></i> {{ home_label }}</a>
+      <button onclick="history.back()" class="btn btn-light btn-sm"><i class="bi bi-arrow-left"></i> Go back</button>
+    </div>
+  </div>
+</div>
+{% endmacro %}
+{% block content %}<div class="py-4">{{ err_body(url_for('dashboard'), 'Go to dashboard') }}</div>{% endblock %}
+{% block auth %}<div class="auth-form" style="min-height:100vh">{{ err_body(url_for('login'), 'Go to sign in') }}</div>{% endblock %}

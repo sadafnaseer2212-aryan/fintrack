@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% import "_macros.html" as m with context %}
+{% block title %}Export & Backup{% endblock %}
+{% block page_title %}Export & Backup{% endblock %}
+{% block page_sub %}Download your records, back up everything, or restore a backup{% endblock %}
+{% block content %}
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="panel stat"><div class="label">Transactions</div><div class="value tnum" data-count="{{ count }}">{{ count }}</div><div class="meta">stored in your account</div></div></div>
+  <div class="col-md-4"><div class="panel stat"><div class="label">Budgets</div><div class="value tnum" data-count="{{ budget_count }}">{{ budget_count }}</div><div class="meta">category budgets</div></div></div>
+  <div class="col-md-4"><div class="panel stat"><div class="label">Backup format</div><div class="value">JSON v2</div><div class="meta">validated before anything is restored</div></div></div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-6"><div class="panel h-100"><div class="panel-body">
+    <div class="d-flex gap-3 mb-3"><span class="kpi-icon ic-green" style="width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:1.15rem"><i class="bi bi-file-earmark-spreadsheet"></i></span>
+      <div><h3 class="panel-title">Export records</h3><div class="panel-sub">All {{ count }} transactions. For a filtered export, use the CSV/Excel buttons on the Transactions page.</div></div></div>
+    <div class="d-flex flex-wrap gap-2">
+      <a href="{{ url_for('export_csv') }}" class="btn btn-light"><i class="bi bi-filetype-csv"></i> Download CSV</a>
+      <a href="{{ url_for('export_excel') }}" class="btn btn-primary"><i class="bi bi-file-earmark-excel"></i> Download Excel</a>
+    </div>
+    <p class="small text-muted mt-3 mb-0"><i class="bi bi-layers"></i> The Excel workbook has three sheets: Transactions, Monthly Summary and Budgets.</p>
+  </div></div></div>
+  <div class="col-lg-6"><div class="panel glow-panel h-100"><div class="panel-body">
+    <div class="d-flex gap-3 mb-3"><span class="kpi-icon ic-green" style="width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:1.15rem"><i class="bi bi-shield-check"></i></span>
+      <div><h3 class="panel-title">Full backup</h3><div class="panel-sub">{{ count }} transactions, {{ budget_count }} budgets and your overall budget, in one file.</div></div></div>
+    <a href="{{ url_for('backup') }}" class="btn btn-primary"><i class="bi bi-download"></i> Download backup</a>
+    <p class="small text-muted mt-3 mb-0">The file contains only your own data and can be restored into any FinTrack account.</p>
+  </div></div></div>
+  <div class="col-12"><div class="panel"><div class="panel-body">
+    <div class="d-flex gap-3 mb-3"><span class="kpi-icon ic-amber" style="width:44px;height:44px;border-radius:13px;display:grid;place-items:center;font-size:1.15rem"><i class="bi bi-arrow-counterclockwise"></i></span>
+      <div><h3 class="panel-title">Restore from backup</h3><div class="panel-sub">The whole file is checked first. If any record is invalid, nothing is imported.</div></div></div>
+    <form method="post" action="{{ url_for('restore') }}" enctype="multipart/form-data" class="row g-3 align-items-end" id="restoreForm">
+      {{ m.csrf() }}
+      <div class="col-md-5"><label class="form-label" for="file">Backup file (.json, max 5 MB)</label>
+        <input type="file" id="file" name="file" accept=".json,application/json" class="form-control" required></div>
+      <div class="col-md-4">
+        <div class="form-check"><input class="form-check-input" type="radio" name="mode" value="merge" id="m1" checked><label class="form-check-label small" for="m1"><b>Add</b> to my existing data</label></div>
+        <div class="form-check"><input class="form-check-input" type="radio" name="mode" value="replace" id="m2"><label class="form-check-label small" for="m2"><b>Replace</b> all my existing data</label></div>
+      </div>
+      <div class="col-md-3"><button class="btn btn-primary w-100" id="restoreBtn" data-no-spin="1"><i class="bi bi-upload"></i> Restore</button></div>
+    </form>
+    <p class="small text-muted mt-3 mb-0"><i class="bi bi-info-circle"></i> Before a replace, a safety copy of your current data is saved on the server automatically.</p>
+  </div></div></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+document.getElementById('restoreForm').addEventListener('submit', (e) => {
+  if (document.getElementById('m2').checked && !confirm('Replace ALL your current transactions and budgets with the backup?')) { e.preventDefault(); return; }
+  const b = document.getElementById('restoreBtn'); setTimeout(() => { b.disabled = true; b.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Restoring…'; }, 0);
+});
+</script>
+{% endblock %}
