@@ -1,0 +1,16 @@
+services:
+  web:
+    build: .
+    image: finance-tracker:latest
+    container_name: finance-tracker
+    ports:
+      - "5000:5000"
+    environment:
+      - SECRET_KEY=${SECRET_KEY:-change-this-secret-key}
+      - DATABASE_PATH=/app/data/finance.db
+    volumes:
+      - finance-data:/app/data   # keeps the SQLite database between restarts
+    restart: unless-stopped
+
+volumes:
+  finance-data:

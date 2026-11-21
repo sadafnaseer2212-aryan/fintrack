@@ -1,0 +1,13 @@
+body { background: #f4f6fb; }
+.bg-brand { background: linear-gradient(90deg, #1e3a8a, #2563eb); }
+.card { border: 0; border-radius: 14px; box-shadow: 0 2px 10px rgba(15, 23, 42, .06); }
+.stat .icon { width: 46px; height: 46px; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; }
+.stat .value { font-size: 1.5rem; font-weight: 700; }
+.auth-wrap { max-width: 420px; margin: 6vh auto; }
+.auth-logo { font-size: 2.6rem; color: #2563eb; }
+.predict-card { background: linear-gradient(135deg, #4f46e5, #7c3aed); color: #fff; }
+.predict-card .big { font-size: 2.2rem; font-weight: 800; }
+.amount-income { color: #16a34a; font-weight: 600; }
+.amount-expense { color: #dc2626; font-weight: 600; }
+.table td, .table th { vertical-align: middle; }
+tr.over td { background: #fff1f2 !important; }

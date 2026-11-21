@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: fintrack-finance-tracker
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_PATH
+        value: /app/data/finance.db

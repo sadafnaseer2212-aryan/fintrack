@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-7 col-lg-5">
+    <div class="card p-4">
+      <h4 class="fw-bold mb-3">{{ title }}</h4>
+      <form method="post">
+        <div class="btn-group w-100 mb-3" role="group">
+          <input type="radio" class="btn-check" name="type" id="t-exp" value="expense" {{ 'checked' if tx.type!='income' }}>
+          <label class="btn btn-outline-danger" for="t-exp"><i class="bi bi-dash-circle"></i> Expense</label>
+          <input type="radio" class="btn-check" name="type" id="t-inc" value="income" {{ 'checked' if tx.type=='income' }}>
+          <label class="btn btn-outline-success" for="t-inc"><i class="bi bi-plus-circle"></i> Income</label>
+        </div>
+        <div class="mb-3"><label class="form-label">Amount (Rs)</label>
+          <input type="number" step="0.01" min="0.01" name="amount" class="form-control form-control-lg" value="{{ tx.amount or '' }}" required autofocus></div>
+        <div class="mb-3"><label class="form-label">Category</label>
+          <select name="category" id="category" class="form-select" required data-current="{{ tx.category or '' }}"></select></div>
+        <div class="mb-3"><label class="form-label">Date</label>
+          <input type="date" name="date" class="form-control" value="{{ tx.date.isoformat() if tx.date else today.isoformat() }}" required></div>
+        <div class="mb-3"><label class="form-label">Description</label>
+          <input name="description" maxlength="200" class="form-control" value="{{ tx.description or '' }}" placeholder="e.g. Grocery from Imtiaz"></div>
+        <div class="d-flex gap-2">
+          <button class="btn btn-primary flex-fill">Save</button>
+          <a href="{{ url_for('transactions') }}" class="btn btn-light">Cancel</a>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const CATS = {{ CATEGORIES | tojson }};
+const sel = document.getElementById('category');
+function fill() {
+  const type = document.querySelector('input[name=type]:checked').value;
+  const cur = sel.value || sel.dataset.current;
+  sel.innerHTML = CATS[type].map(c => `<option ${c === cur ? 'selected' : ''}>${c}</option>`).join('');
+}
+document.querySelectorAll('input[name=type]').forEach(r => r.addEventListener('change', fill));
+fill();
+</script>
+{% endblock %}

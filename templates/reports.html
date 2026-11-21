@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}Reports{% endblock %}
+{% block content %}
+<div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+  <h3 class="fw-bold mb-0">Reports</h3>
+  <form class="d-flex gap-2" method="get">
+    <select name="year" class="form-select form-select-sm" onchange="this.form.submit()">
+      {% for y in years %}<option value="{{ y }}" {{ 'selected' if y==year }}>{{ y }}</option>{% endfor %}
+    </select>
+    <select name="month" class="form-select form-select-sm" onchange="this.form.submit()">
+      <option value="0">Yearly report</option>
+      {% for m in range(1, 13) %}<option value="{{ m }}" {{ 'selected' if m==month }}>{{ ['January','February','March','April','May','June','July','August','September','October','November','December'][m-1] }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+{% for a in alerts %}
+<div class="alert alert-warning py-2"><i class="bi bi-exclamation-triangle-fill"></i> {{ a }}</div>
+{% endfor %}
+
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="card p-3"><small class="text-muted">Income ({{ 'month' if month else 'year' }})</small><div class="fs-4 amount-income">Rs {{ '{:,.0f}'.format(income) }}</div></div></div>
+  <div class="col-md-4"><div class="card p-3"><small class="text-muted">Expenses ({{ 'month' if month else 'year' }})</small><div class="fs-4 amount-expense">Rs {{ '{:,.0f}'.format(expense) }}</div></div></div>
+  <div class="col-md-4"><div class="card p-3"><small class="text-muted">Savings</small><div class="fs-4 fw-bold">Rs {{ '{:,.0f}'.format(income - expense) }}
+    {% if income %}<small class="text-muted fs-6">({{ '%.0f' % ((income - expense) / income * 100) }}%)</small>{% endif %}</div></div></div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-lg-7"><div class="card p-3"><h6 class="fw-bold">Monthly trend {{ year }}</h6><div id="monthChart" style="height:320px"></div></div></div>
+  <div class="col-lg-5"><div class="card p-3"><h6 class="fw-bold">Spending by category</h6><div id="catChart" style="height:320px"></div></div></div>
+</div>
+
+<div class="row g-3">
+  <div class="col-lg-7">
+    <div class="card p-0">
+      <div class="p-3 pb-0"><h6 class="fw-bold">Month-by-month summary</h6>
+        <p class="small text-muted mb-2">Months highlighted in red spent more than 20% above the average (Rs {{ '{:,.0f}'.format(avg_exp) }}).</p></div>
+      <table class="table table-sm mb-0">
+        <thead class="table-light"><tr><th>Month</th><th class="text-end">Income</th><th class="text-end">Expenses</th><th class="text-end">Net</th></tr></thead>
+        <tbody>
+        {% for r in monthly %}
+          <tr class="{{ 'over' if r.over }}"><td>{{ r.month }} {% if r.over %}<i class="bi bi-exclamation-circle text-danger" title="Overspending"></i>{% endif %}</td>
+            <td class="text-end">{{ '{:,.0f}'.format(r.income) }}</td>
+            <td class="text-end">{{ '{:,.0f}'.format(r.expense) }}</td>
+            <td class="text-end fw-semibold {{ 'text-danger' if r.net < 0 else 'text-success' }}">{{ '{:,.0f}'.format(r.net) }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card p-0">
+      <div class="p-3 pb-0"><h6 class="fw-bold">Top spending categories</h6></div>
+      <table class="table table-sm mb-0">
+        <tbody>
+        {% for c, v in by_cat.items() %}
+          <tr><td>{{ c }}</td><td class="w-50"><div class="progress" style="height:8px"><div class="progress-bar bg-danger" style="width: {{ (v / expense * 100) if expense else 0 }}%"></div></div></td>
+            <td class="text-end">Rs {{ '{:,.0f}'.format(v) }}</td></tr>
+        {% else %}
+          <tr><td class="text-muted">No expenses in this period.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+const monthly = {{ monthly | tojson }};
+const byCat = {{ by_cat | tojson }};
+const cfg = {responsive: true, displayModeBar: false};
+const base = {margin: {t: 10, r: 10, b: 40, l: 60}, legend: {orientation: 'h', y: -0.2},
+              paper_bgcolor: 'rgba(0,0,0,0)', plot_bgcolor: 'rgba(0,0,0,0)'};
+const m = monthly.map(r => r.month);
+Plotly.newPlot('monthChart', [
+  {x: m, y: monthly.map(r => r.income), name: 'Income', type: 'bar', marker: {color: '#22c55e'}},
+  {x: m, y: monthly.map(r => r.expense), name: 'Expenses', type: 'bar',
+   marker: {color: monthly.map(r => r.over ? '#b91c1c' : '#f87171')}},
+  {x: m, y: monthly.map(r => r.net), name: 'Net savings', type: 'scatter', mode: 'lines+markers', line: {color: '#2563eb'}},
+], {...base, barmode: 'group'}, cfg);
+const labels = Object.keys(byCat);
+if (labels.length) {
+  Plotly.newPlot('catChart', [{type: 'bar', orientation: 'h', y: labels.reverse(), x: labels.map(l => byCat[l]),
+                               marker: {color: '#ef4444'}}], {...base, margin: {t: 10, r: 10, b: 30, l: 100}}, cfg);
+} else {
+  document.getElementById('catChart').innerHTML = '<p class="text-muted mt-5 text-center">No data.</p>';
+}
+</script>
+{% endblock %}
