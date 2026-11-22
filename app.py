@@ -1,5 +1,6 @@
 """FinTrack: Personal Finance Tracker with Expense Prediction (Flask application)."""
 import csv
+import gzip
 import io
 import json
 import math
@@ -60,6 +61,7 @@ app.config.update(
     SESSION_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE") == "1",
     REMEMBER_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE") == "1",
     CSRF_ENABLED=True,
+    SEND_FILE_MAX_AGE_DEFAULT=31536000,     # static URLs carry ?v=<mtime>, so browsers may cache them for a year
 )
 if app.config["SECRET_KEY"] == DEFAULT_SECRET:
     app.logger.info("SECRET_KEY not set: using a development key (fine locally; set SECRET_KEY in production).")
@@ -83,6 +85,48 @@ SORTS = {
     "amount_asc": (Transaction.amount.asc(),),
     "category": (Transaction.category.asc(), Transaction.date.desc()),
 }
+
+
+# ================================================================== speed
+@app.url_defaults
+def static_version(endpoint, values):
+    """Add ?v=<file modification time> to static URLs so cached files refresh as soon as they change."""
+    if endpoint == "static" and "filename" in values and "v" not in values:
+        try:
+            values["v"] = int(os.path.getmtime(os.path.join(app.static_folder, values["filename"])))
+        except OSError:
+            pass
+
+
+GZIP_TYPES = {"text/html", "text/css", "application/javascript", "text/javascript", "application/json", "image/svg+xml"}
+_gzip_cache = {}
+
+
+@app.after_request
+def gzip_response(resp):
+    """Compress text responses (HTML, CSS, JS, JSON) for browsers that accept gzip."""
+    if resp.status_code != 200 or resp.mimetype not in GZIP_TYPES or "Content-Encoding" in resp.headers             or "gzip" not in request.headers.get("Accept-Encoding", "").lower():
+        return resp
+    if resp.direct_passthrough:                       # a static file: compress once and keep it in memory
+        path = os.path.join(app.static_folder, (request.view_args or {}).get("filename", ""))
+        if request.endpoint != "static" or not os.path.isfile(path):
+            return resp
+        key = (path, os.path.getmtime(path))
+        if key not in _gzip_cache:
+            with open(path, "rb") as fh:
+                _gzip_cache[key] = gzip.compress(fh.read(), 6)
+        data = _gzip_cache[key]
+        resp.direct_passthrough = False
+    else:
+        raw = resp.get_data()
+        if len(raw) < 1024:
+            return resp
+        data = gzip.compress(raw, 6)
+    resp.set_data(data)
+    resp.headers["Content-Encoding"] = "gzip"
+    resp.headers["Content-Length"] = str(len(data))
+    resp.vary.add("Accept-Encoding")
+    return resp
 
 
 # ================================================================== security

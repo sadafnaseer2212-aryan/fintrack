@@ -154,9 +154,9 @@ def _predict(transactions):
 
     results, test_months, test_actual = evaluate(y, months)
     best = min(results, key=lambda k: results[k]["mae"])
-    fn = MODELS[best][0]
-    pred = max(0.0, fn(y, HORIZON))
-    all_preds = {name: round(max(0.0, MODELS[name][0](y, HORIZON)), 2) for name in results}
+    raw_preds = {name: max(0.0, MODELS[name][0](y, HORIZON)) for name in results}
+    pred = raw_preds[best]
+    all_preds = {name: round(v, 2) for name, v in raw_preds.items()}
     rmse = results[best]["rmse"]
     return {**base, "ok": True, "evaluated": True, "model": best,
             "prediction": round(pred, 2),

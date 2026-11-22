@@ -464,7 +464,7 @@ class ReviewFixTests(Base):
 
 class FrontendTests(Base):
     ASSETS = ["vendor/bootstrap.min.css", "vendor/bootstrap.bundle.min.js", "vendor/gsap.min.js",
-              "vendor/plotly.min.js", "vendor/three.module.min.js", "vendor/bootstrap-icons/bootstrap-icons.min.css",
+              "vendor/plotly-basic.min.js", "vendor/three.module.min.js", "vendor/bootstrap-icons/bootstrap-icons.min.css",
               "vendor/bootstrap-icons/fonts/bootstrap-icons.woff2", "vendor/fonts/inter-var.woff2",
               "vendor/fonts/space-grotesk-var.woff2", "js/fin3d.js", "app.js", "style.css"]
 

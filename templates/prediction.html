@@ -2,7 +2,7 @@
 {% block title %}AI Expense Prediction{% endblock %}
 {% block page_title %}AI Expense Prediction{% endblock %}
 {% block page_sub %}scikit-learn forecast of next month's spending, evaluated on your own history{% endblock %}
-{% block charts_lib %}<script src="{{ url_for('static', filename='vendor/plotly.min.js') }}"></script>{% endblock %}
+{% block charts_lib %}<script src="{{ url_for('static', filename='vendor/plotly-basic.min.js') }}"></script>{% endblock %}
 {% block content %}
 {% if sample %}<div class="sample-banner mb-3"><span><i class="bi bi-info-circle me-1"></i>The forecast below is trained on <b>sample demonstration data</b>. Add your own records for a personal forecast.</span></div>{% endif %}
 

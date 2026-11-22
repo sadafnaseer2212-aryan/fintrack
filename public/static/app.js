@@ -28,12 +28,20 @@ FT.layout = (extra = {}) => {
   return base;
 };
 FT.config = {responsive: true, displayModeBar: false};
+/** Load Plotly only when a page actually draws a 2D chart (keeps the 3D dashboard light). */
+FT.loadPlotly = () => FT._plotly || (FT._plotly = new Promise((ok, fail) => {
+  if (typeof Plotly !== 'undefined') return ok();
+  const s = document.createElement('script'); s.src = document.documentElement.dataset.plotly; s.onload = ok; s.onerror = fail; document.head.appendChild(s);
+}));
 
 /** Plot and (unless reduced motion) animate bars/lines growing from zero. */
 FT.plot = (id, traces, layout = {}, opts = {}) => {
   const el = document.getElementById(id);
   if (!el) return;
-  if (typeof Plotly === 'undefined') { el.textContent = 'Chart library failed to load.'; return; }
+  if (typeof Plotly === 'undefined') {
+    if (FT.loadPlotly) { FT.loadPlotly().then(() => FT.plot(id, traces, layout, opts), () => { el.textContent = 'Chart library failed to load.'; }); return; }
+    el.textContent = 'Chart library failed to load.'; return;
+  }
   el.innerHTML = '';
   el.classList.remove('chart-loading');
   const animate = opts.animate !== false && !FT.reduced;
