@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "functions": {
+    "app.py": {
+      "maxDuration": 60,
+      "excludeFiles": "{tests/**,screenshots/**,wheels/**,instance/**,public/**,migrate.py,run_windows.bat,Dockerfile,docker-compose.yml,render.yaml}"
+    }
+  }
+}

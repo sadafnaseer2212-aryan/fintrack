@@ -20,7 +20,7 @@ RUN (pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.
 # Copy only the application code (no database, secrets, tests or build files)
 COPY app.py finance.py ml.py models.py migrate.py ./
 COPY templates/ templates/
-COPY static/ static/
+COPY public/ public/
 
 # Run as a non-root user for security
 RUN useradd --create-home appuser && mkdir -p /app/data && chown -R appuser /app

@@ -87,7 +87,7 @@ finance-tracker/
 ├── .env.example         # optional configuration
 ├── run_windows.bat      # one-click start on Windows
 ├── templates/           # Jinja2 pages (base layout, macros, every page)
-├── static/
+├── public/static/
 │   ├── style.css        # design system
 │   ├── app.js           # charts theme, animations, toasts, sparklines, 3D/2D switch
 │   ├── js/fin3d.js      # Three.js scenes (overview bars, category ring, login terrain)
@@ -114,6 +114,18 @@ Migrations are additive only: existing users and transactions are never altered 
 ## Configuration
 
 None is needed to run locally. For production, set `SECRET_KEY` to a long random value (see `.env.example`). The other options are `DATABASE_PATH`, `HOST`, `PORT` and `FLASK_DEBUG` (development only).
+
+## Deploy on Vercel (with a free Neon PostgreSQL database)
+
+Vercel runs `app.py` as a Python function; files in `public/` (including `public/static/`) are served from Vercel's CDN.
+Vercel's filesystem is read-only and temporary, so production data is stored in **PostgreSQL** (Neon free plan).
+
+1. Import this GitHub repository in Vercel (framework preset: Flask is detected automatically).
+2. In the project's **Storage** tab, create a **Neon** database (free) and connect it; this adds `DATABASE_URL`.
+3. In **Settings → Environment Variables** add `SECRET_KEY` (a long random string) and `SESSION_COOKIE_SECURE=1`.
+4. Redeploy. Tables are created automatically on first start.
+
+Locally nothing changes: without `DATABASE_URL`, FinTrack keeps using `instance/finance.db` (SQLite).
 
 ## Optional: Docker (not required for local use)
 

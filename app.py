@@ -6,6 +6,7 @@ import math
 import os
 import random
 import secrets
+import tempfile
 from datetime import date, datetime, timedelta
 from urllib.parse import urlparse
 
@@ -27,11 +28,30 @@ from models import (CATEGORIES, SAMPLE_PREFIX, Budget, PredictionLog,
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DEFAULT_SECRET = "dev-secret-change-me"
 
-app = Flask(__name__)
+
+def database_uri():
+    """PostgreSQL when DATABASE_URL is set (e.g. Neon on Vercel); otherwise a local SQLite file."""
+    url = os.environ.get("DATABASE_URL") or os.environ.get("POSTGRES_URL")
+    if url:
+        if url.startswith("postgres://"):
+            url = "postgresql://" + url[len("postgres://"):]
+        if url.startswith("postgresql://"):
+            url = "postgresql+psycopg://" + url[len("postgresql://"):]
+        return url
+    path = os.environ.get("DATABASE_PATH") or os.path.join(BASE_DIR, "instance", "finance.db")
+    if os.environ.get("VERCEL") and not os.environ.get("DATABASE_PATH"):
+        path = "/tmp/finance.db"   # read-only filesystem: temporary only; set DATABASE_URL for real storage
+        print("WARNING: DATABASE_URL is not set - using temporary SQLite storage in /tmp", flush=True)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return "sqlite:///" + path
+
+
+# static files live in public/static: Flask serves them locally, Vercel serves public/** from its CDN
+app = Flask(__name__, static_folder=os.path.join("public", "static"), static_url_path="/static")
 app.config.update(
     SECRET_KEY=os.environ.get("SECRET_KEY") or DEFAULT_SECRET,
-    SQLALCHEMY_DATABASE_URI="sqlite:///" + (os.environ.get("DATABASE_PATH")
-                                            or os.path.join(BASE_DIR, "instance", "finance.db")),
+    SQLALCHEMY_DATABASE_URI=database_uri(),
+    SQLALCHEMY_ENGINE_OPTIONS={"pool_pre_ping": True, "pool_recycle": 280},
     MAX_CONTENT_LENGTH=5 * 1024 * 1024,      # backup upload limit
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
@@ -41,7 +61,6 @@ app.config.update(
     REMEMBER_COOKIE_SECURE=os.environ.get("SESSION_COOKIE_SECURE") == "1",
     CSRF_ENABLED=True,
 )
-os.makedirs(os.path.dirname(app.config["SQLALCHEMY_DATABASE_URI"][len("sqlite:///"):]), exist_ok=True)
 if app.config["SECRET_KEY"] == DEFAULT_SECRET:
     app.logger.info("SECRET_KEY not set: using a development key (fine locally; set SECRET_KEY in production).")
 
@@ -712,6 +731,20 @@ def parse_backup(raw):
     return txs, budgets, overall
 
 
+def save_safety_copy(payload):
+    """Keep a server-side copy of the user's data before a replace-restore (next to a SQLite DB,
+    or in the temp folder on read-only hosts such as Vercel). Never blocks the restore."""
+    uri = app.config["SQLALCHEMY_DATABASE_URI"]
+    for folder in ([os.path.join(os.path.dirname(uri[len("sqlite:///"):]), "backups")] if uri.startswith("sqlite:///") else [])             + [os.path.join(tempfile.gettempdir(), "fintrack-backups")]:
+        try:
+            os.makedirs(folder, exist_ok=True)
+            with open(os.path.join(folder, f"user{current_user.id}-pre-restore-{datetime.now():%Y%m%d-%H%M%S}.json"), "w") as fh:
+                json.dump(payload, fh)
+            return
+        except OSError:
+            continue
+
+
 @app.route("/restore", methods=["POST"])
 @login_required
 def restore():
@@ -729,11 +762,7 @@ def restore():
     try:
         if replace:
             # keep a server-side safety copy of the current data first
-            safety_dir = os.path.join(os.path.dirname(app.config["SQLALCHEMY_DATABASE_URI"][10:]), "backups")
-            os.makedirs(safety_dir, exist_ok=True)
-            with open(os.path.join(safety_dir, f"user{current_user.id}-pre-restore-"
-                                               f"{datetime.now():%Y%m%d-%H%M%S}.json"), "w") as fh:
-                json.dump(backup_payload(current_user), fh)
+            save_safety_copy(backup_payload(current_user))
             user_tx().delete()
             Budget.query.filter_by(user_id=current_user.id).delete()
         db.session.add_all(Transaction(user_id=current_user.id, **t) for t in txs)
